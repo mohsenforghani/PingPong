@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="fa">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>بازی آنلاین دو نفره</title>
+<style>
+    html, body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: black;
+        width: 100%;
+        height: 100%;
+    }
+    canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        background: black;
+    }
+    body, html {
+        touch-action: none; /* جلوگیری از اسکرول روی موبایل */
+    }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// تنظیم اندازه Canvas برای فول‌اسکرین واقعی
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// شناسه بازیکن
+let playerId = null;
+let paddleY = canvas.height / 2 - 50;
+
+// WebSocket
+const ws = new WebSocket('ws://localhost:8080');
+
+ws.onopen = () => console.log("Connected to server");
+
+ws.onmessage = (msg) => {
+    let data = JSON.parse(msg.data);
+
+    if(data.playerId !== undefined) {
+        playerId = data.playerId;
+    }
+
+    if(data.ball && data.paddles){
+        drawGame(data);
+    }
+}
+
+// ارسال حرکت راکت به سرور (ماوس)
+document.addEventListener('mousemove', e => {
+    if(playerId === null) return;
+    paddleY = e.clientY - 50;
+    sendPaddlePosition();
+});
+
+// ارسال حرکت راکت به سرور (لمس موبایل)
+document.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if(playerId === null) return;
+    paddleY = e.touches[0].clientY - 50;
+    sendPaddlePosition();
+}, {passive: false});
+
+function sendPaddlePosition(){
+    ws.send(JSON.stringify({player: playerId, y: paddleY}));
+}
+
+// رسم بازی
+function drawGame(state){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // مقیاس برای صفحه فول‌اسکرین
+    const scaleX = canvas.width / 800;
+    const scaleY = canvas.height / 600;
+
+    // توپ
+    ctx.beginPath();
+    ctx.arc(state.ball.x * scaleX, state.ball.y * scaleY, state.ball.radius, 0, Math.PI*2);
+    ctx.fillStyle = 'white';
+    ctx.fill();
+
+    // راکت‌ها
+    ctx.fillStyle = 'white';
+    state.paddles.forEach(p => {
+        ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
+    });
+
+    // امتیاز
+    ctx.font = `${20*scaleY}px Arial`;
+    ctx.fillText(`Player 1: ${state.scores[0]}  Player 2: ${state.scores[1]}`, canvas.width/2 - 100, 30);
+}
+</script>
+</body>
+</html>
