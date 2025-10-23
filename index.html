@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Pong Online</title>
+<title>Pong Online Responsive</title>
 <style>
     html, body {
         margin: 0;
@@ -25,7 +25,7 @@
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
-// تنظیم اندازه canvas روی کل صفحه
+// Canvas تمام صفحه و responsive
 function resizeCanvas() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -33,7 +33,7 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// جایگزین کن با URL Render واقعی
+// جایگزین کن با URL سرور Render خودت
 const ws = new WebSocket('wss://pingpong-te0t.onrender.com');
 
 let playerId = null;
@@ -41,8 +41,8 @@ let paddleY = 0;
 
 // وضعیت بازی از سرور
 let state = {
-    ball: {x:0,y:0,radius:10},
-    paddles: [{x:0,y:0,w:20,h:100},{x:0,y:0,w:20,h:100}],
+    ball: {x:400,y:300,radius:10},
+    paddles: [{x:50,y:250,w:20,h:100},{x:730,y:250,w:20,h:100}],
     scores: [0,0]
 };
 
@@ -52,27 +52,26 @@ ws.onmessage = (msg) => {
     if(data.playerId !== undefined){
         playerId = data.playerId;
     } else {
-        state = data;
-        drawGame();
+        state = data; // فقط به‌روزرسانی وضعیت
     }
 }
 
-// کنترل راکت با لمس/موس
+// ارسال موقعیت راکت به سرور
 function sendPaddleY(y){
     if(playerId === null) return;
     ws.send(JSON.stringify({player: playerId, y: y}));
 }
 
-// موس
+// کنترل با موس
 canvas.addEventListener('mousemove', e => {
-    paddleY = e.clientY - 50;
+    paddleY = e.clientY - state.paddles[playerId]?.h/2 || 50;
     sendPaddleY(paddleY);
 });
 
-// لمس موبایل
+// کنترل با لمس موبایل
 canvas.addEventListener('touchmove', e => {
     e.preventDefault();
-    paddleY = e.touches[0].clientY - 50;
+    paddleY = e.touches[0].clientY - state.paddles[playerId]?.h/2 || 50;
     sendPaddleY(paddleY);
 }, {passive:false});
 
@@ -83,7 +82,12 @@ function drawGame(){
     // توپ
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    ctx.arc(state.ball.x * canvas.width / 800, state.ball.y * canvas.height / 600, state.ball.radius * canvas.width / 800, 0, Math.PI*2);
+    ctx.arc(
+        state.ball.x * canvas.width / 800,
+        state.ball.y * canvas.height / 600,
+        state.ball.radius * canvas.width / 800,
+        0, Math.PI*2
+    );
     ctx.fill();
 
     // راکت‌ها
@@ -96,12 +100,24 @@ function drawGame(){
         );
     });
 
+    // دروازه‌ها (عرض کل صفحه)
+    ctx.fillStyle = 'red';
+    ctx.fillRect(0, 0, canvas.width, 10); // بالا
+    ctx.fillRect(0, canvas.height-10, canvas.width, 10); // پایین
+
     // نمره
+    ctx.fillStyle = 'white';
     ctx.font = "30px Arial";
     ctx.fillText(state.scores[0], canvas.width/4, 50);
     ctx.fillText(state.scores[1], 3*canvas.width/4, 50);
 }
 
+// loop مستقل برای رسم روان
+function renderLoop(){
+    drawGame();
+    requestAnimationFrame(renderLoop);
+}
+renderLoop();
 </script>
 </body>
 </html>
