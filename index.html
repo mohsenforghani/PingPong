@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Pong Online</title>
+<title>Pong Online - Smooth Version</title>
 <style>
     html, body {
         margin: 0;
@@ -33,18 +33,25 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// جایگزین کن با URL Render واقعی
+// ✅ اتصال به سرور Render
 const ws = new WebSocket('wss://pingpong-te0t.onrender.com');
 
 let playerId = null;
 let paddleY = 0;
 
-// وضعیت بازی از سرور
+// وضعیت فعلی بازی
 let state = {
-    ball: {x:0,y:0,radius:10},
-    paddles: [{x:0,y:0,w:20,h:100},{x:0,y:0,w:20,h:100}],
+    ball: {x:400, y:300, radius:10},
+    paddles: [
+        {x:10, y:250, w:20, h:100},
+        {x:770, y:250, w:20, h:100}
+    ],
     scores: [0,0]
 };
+
+// سرعت انیمیشن (میانگین‌گیری برای نرمی)
+let targetState = JSON.parse(JSON.stringify(state));
+let smoothing = 0.15;
 
 // دریافت پیام از سرور
 ws.onmessage = (msg) => {
@@ -52,12 +59,11 @@ ws.onmessage = (msg) => {
     if(data.playerId !== undefined){
         playerId = data.playerId;
     } else {
-        state = data;
-        drawGame();
+        targetState = data;
     }
-}
+};
 
-// کنترل راکت با لمس/موس
+// کنترل راکت با لمس و موس
 function sendPaddleY(y){
     if(playerId === null) return;
     ws.send(JSON.stringify({player: playerId, y: y}));
@@ -76,32 +82,48 @@ canvas.addEventListener('touchmove', e => {
     sendPaddleY(paddleY);
 }, {passive:false});
 
+// 🎮 حلقه رندر نرم
+function animate(){
+    requestAnimationFrame(animate);
+
+    // میانگین‌گیری نرم بین وضعیت فعلی و وضعیت هدف
+    state.ball.x += (targetState.ball.x - state.ball.x) * smoothing;
+    state.ball.y += (targetState.ball.y - state.ball.y) * smoothing;
+
+    for(let i=0; i<2; i++){
+        state.paddles[i].y += (targetState.paddles[i].y - state.paddles[i].y) * smoothing;
+        state.scores[i] = targetState.scores[i];
+    }
+
+    drawGame();
+}
+
 // رسم بازی
 function drawGame(){
     ctx.clearRect(0,0,canvas.width,canvas.height);
+    const scaleX = canvas.width / 800;
+    const scaleY = canvas.height / 600;
 
     // توپ
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    ctx.arc(state.ball.x * canvas.width / 800, state.ball.y * canvas.height / 600, state.ball.radius * canvas.width / 800, 0, Math.PI*2);
+    ctx.arc(state.ball.x * scaleX, state.ball.y * scaleY, state.ball.radius * scaleX, 0, Math.PI*2);
     ctx.fill();
 
     // راکت‌ها
+    ctx.fillStyle = 'white';
     state.paddles.forEach(p => {
-        ctx.fillRect(
-            p.x * canvas.width / 800,
-            p.y * canvas.height / 600,
-            p.w * canvas.width / 800,
-            p.h * canvas.height / 600
-        );
+        ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
     });
 
-    // نمره
-    ctx.font = "30px Arial";
-    ctx.fillText(state.scores[0], canvas.width/4, 50);
-    ctx.fillText(state.scores[1], 3*canvas.width/4, 50);
+    // امتیاز
+    ctx.font = `${30*scaleY}px Arial`;
+    ctx.fillText(state.scores[0], canvas.width/4, 50*scaleY);
+    ctx.fillText(state.scores[1], 3*canvas.width/4, 50*scaleY);
 }
 
+// شروع انیمیشن
+animate();
 </script>
 </body>
 </html>
