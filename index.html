@@ -44,7 +44,7 @@ let playerId = null;
 let paddleY = canvas.height / 2 - 50;
 
 // WebSocket
-const ws = new WebSocket('ws://localhost:8080');
+const ws = new WebSocket('wss://pingpong-te0t.onrender.com');
 
 ws.onopen = () => console.log("Connected to server");
 
@@ -106,3 +106,4 @@ function drawGame(state){
 </script>
 </body>
 </html>
+
