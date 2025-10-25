@@ -36,6 +36,7 @@ function broadcastGame(game){
 // حرکت توپ و برخوردها
 function updateGame(game){
   const b = game.state.ball;
+  const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
   b.x += b.vx;
   b.y += b.vy;
 
@@ -46,23 +47,27 @@ function updateGame(game){
   // برخورد با پدل‌ها
   game.state.paddles.forEach((p,i)=>{
     if(b.y + b.radius >= p.y && b.y - b.radius <= p.y+p.h && b.x + b.radius >= p.x && b.x - b.radius <= p.x + p.w){
-      b.vy*=-1;
-      // کمی تصادفی
-      const diff = (b.x-(p.x+p.w/2))/ (p.w/2);
-      b.vx += diff*2;
+      // فاصله از مرکز پدل
+      const offset = (b.x - (p.x + p.w/2)) / (p.w/2); // -1 تا 1
+      const angle = offset * (Math.PI/3); // حداکثر ±60 درجه
+
+      const newSpeed = Math.min(8, speed + 0.5); // کمی افزایش سرعت
+      const dir = i===0?1:-1; // بالا به پایین یا پایین به بالا
+
+      b.vx = newSpeed * Math.sin(angle);
+      b.vy = dir * newSpeed * Math.cos(angle);
+
+      // جای توپ برای جلوگیری از گیر کردن
+      if(i===0) b.y = p.y + p.h + b.radius;
+      else b.y = p.y - b.radius;
     }
   });
 
-  // گل
-  if(b.y < 0){
-    game.state.scores[1]++;
-    resetBall(game.state, 1);
-  }
-  if(b.y > LOGICAL_H){
-    game.state.scores[0]++;
-    resetBall(game.state, 0);
-  }
+  // گل شدن
+  if(b.y < 0){ game.state.scores[1]++; resetBall(game.state,1); }
+  if(b.y > LOGICAL_H){ game.state.scores[0]++; resetBall(game.state,0); }
 }
+
 
 // ریست توپ
 function resetBall(state, scorer){
@@ -129,3 +134,4 @@ setInterval(()=>{
     broadcastGame(game);
   });
 }, 1000/30); // ۶۰ FPS
+
