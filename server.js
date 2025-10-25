@@ -241,9 +241,10 @@ setInterval(() => {
   // ارسال وضعیت به همه
   broadcast({ type: 'state', state });
 
-}, 1000 / 30);
+}, 1000 / 50);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
 
 
 
