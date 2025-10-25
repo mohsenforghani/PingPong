@@ -39,8 +39,10 @@ let renderPaddles=[
 
 // تنظیم اندازه صفحه
 function resizeCanvas(){
-  canvas.width=window.innerWidth;
-  canvas.height=window.innerHeight;
+  const ratio = window.devicePixelRatio || 1;
+  canvas.width = window.innerWidth * ratio;
+  canvas.height = window.innerHeight * ratio;
+  ctx.scale(ratio, ratio);
 }
 window.addEventListener('resize',resizeCanvas);
 resizeCanvas();
@@ -84,22 +86,29 @@ function sendPaddle(clientX){
   logicalX=Math.max(0, Math.min(LOGICAL_W-100, logicalX-50));
   ws.send(JSON.stringify({type:'paddle', player:playerId, x:logicalX}));
 }
-
+let lastSend = 0;
+function sendPaddleThrottled(clientX) {
+  const now = Date.now();
+  if (now - lastSend < 50) return; // هر 50ms یکبار
+  lastSend = now;
+  sendPaddle(clientX);
+}
 // کنترل موس و لمس
-document.addEventListener('mousemove', e=>sendPaddle(e.clientX));
-document.addEventListener('touchmove', e=>{ e.preventDefault(); sendPaddle(e.touches[0].clientX); }, {passive:false});
+document.addEventListener('mousemove', e=>sendPaddleThrottled(e.clientX));
+document.addEventListener('touchmove', e=>{ e.preventDefault(); sendPaddleThrottled(e.touches[0].clientX); }, {passive:false});
 
 // رسم بازی
 function draw(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   if(gameState){
-    const scale=canvas.width/LOGICAL_W;
+    const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
     const offsetX=(canvas.width - LOGICAL_W*scale)/2;
     const offsetY=(canvas.height - LOGICAL_H*scale)/2;
 
     // توپ با حرکت نرم
-    renderBall.x += (gameState.ball.x - renderBall.x)*0.2;
-    renderBall.y += (gameState.ball.y - renderBall.y)*0.2;
+    const smoothing = 0.1 + Math.min(0.4, latency / 200); // اگر latency زیاد شد، نرم‌تر کن
+renderBall.x += (gameState.ball.x - renderBall.x) * smoothing;
+renderBall.y += (gameState.ball.y - renderBall.y) * smoothing;
     ctx.fillStyle='white';
     ctx.beginPath();
     ctx.arc(offsetX + renderBall.x*scale, offsetY + renderBall.y*scale, Math.max(2, gameState.ball.radius*scale), 0, Math.PI*2);
@@ -118,3 +127,4 @@ draw();
 </script>
 </body>
 </html>
+
