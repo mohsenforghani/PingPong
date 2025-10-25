@@ -189,7 +189,7 @@ function onMessage(e) {
     while (stateBuffer.length > 10) stateBuffer.shift();
     // update immediate authoritative copy for score etc
     gameState = s;
-    if (s.scores) scoreBox.textContent = `${s.scores[0]} - ${s.scores[1]}`;
+    //if (s.scores) scoreBox.textContent = `${s.scores[0]} - ${s.scores[1]}`;
     return;
   }
   if (t === 'ping') {
@@ -336,12 +336,12 @@ function drawLoop() {
     });
 
     // score
-    if (drawState.scores) {
-      ctx.fillStyle = '#fff';
-      ctx.font = `${Math.max(12, Math.round(20 * Math.min(scaleX, scaleY)))}px Tahoma`;
-      ctx.textAlign = 'center';
-     //ctx.fillText(`${drawState.scores[0]} - ${drawState.scores[1]}`, displayW / 2, offsetY + 26);
-    }
+   if (drawState.scores) {
+  ctx.fillStyle = '#fff';
+  ctx.font = `${Math.max(12, Math.round(20 * Math.min(scaleX, scaleY)))}px Tahoma`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${drawState.scores[0]} - ${drawState.scores[1]}`, displayW / 2, offsetY + 26);
+}
 
   } else {
     // fallback UI text
@@ -360,4 +360,5 @@ connect();
 </script>
 </body>
 </html>
+
 
