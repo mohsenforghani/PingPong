@@ -31,10 +31,10 @@ function resetBall() {
   // بازیکن پایین
   state.paddles[1].y = GAME_HEIGHT - 30 - state.paddles[1].h;
   
-  state.ball.x = GAME_WIDTH / 2;
-  state.ball.y = GAME_HEIGHT / 2;
-  state.ball.vx = (Math.random() - 0.5) * 6;
-  state.ball.vy = Math.random() > 0.5 ? 4 : -4;
+  const angle = (Math.random() * Math.PI / 4) - Math.PI / 8; // ±22.5 درجه
+  const speed = 5; // سرعت ثابت
+  state.ball.vx = speed * Math.sin(angle);
+  state.ball.vy = Math.random() > 0.5 ? speed * Math.cos(angle) : -speed * Math.cos(angle);
 }
 
 
@@ -216,23 +216,34 @@ setInterval(() => {
   }
 
   // برخورد با پدل‌ها (بالا و پایین)
-  state.paddles.forEach((p, i) => {
-    if (
-      b.y + b.radius > p.y &&
-      b.y - b.radius < p.y + p.h &&
-      b.x + b.radius > p.x &&
-      b.x - b.radius < p.x + p.w
-    ) {
-      // معکوس کردن جهت عمودی
-      b.vy *= -1;
-      // تغییر vx بر اساس offest از مرکز پدل
-      const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
-      b.vx += offset * 3;
-      const maxSpeed = 8;
-      b.vx = Math.max(-maxSpeed, Math.min(maxSpeed, b.vx));
-      b.vy = Math.max(-maxSpeed, Math.min(maxSpeed, b.vy));
+ state.paddles.forEach((p, i) => {
+  if (
+    b.y + b.radius > p.y &&
+    b.y - b.radius < p.y + p.h &&
+    b.x + b.radius > p.x &&
+    b.x - b.radius < p.x + p.w
+  ) {
+    // فاصله مرکز توپ تا مرکز پدل
+    const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2); // -1 تا 1
+
+    // محاسبه سرعت کل توپ
+    const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+
+    // معکوس عمودی و تنظیم زاویه بر اساس offset
+    b.vy *= -1;
+    b.vx = offset * speed;
+
+    // محدود کردن حداکثر سرعت
+    const maxSpeed = 8;
+    const currentSpeed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (currentSpeed > maxSpeed) {
+      const factor = maxSpeed / currentSpeed;
+      b.vx *= factor;
+      b.vy *= factor;
     }
-  });
+  }
+});
+
 
   // گل شدن (وقتی توپ از بالا یا پایین خارج می‌شود)
  if (b.y < 0) {
@@ -250,6 +261,7 @@ setInterval(() => {
 }, 1000 / 50);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
 
 
 
