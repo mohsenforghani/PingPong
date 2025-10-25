@@ -7,11 +7,11 @@ const wss = new WebSocket.Server({ port: PORT });
 
 const GAME_W = 450;
 const GAME_H = 800;
-const TICK_HZ =   60;
-const SEND_RATE = 30;
+const TICK_HZ =   50;
+const SEND_RATE = 16;
 const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
-const MAX_SPEED = 7;
-const BASE_BALL_SPEED = 5;
+const MAX_SPEED = 10pp;
+const BASE_BALL_SPEED = 8;
 const HEARTBEAT_MS = 10000;
 const MAX_MISSED_PONG = 3;
 
@@ -24,10 +24,10 @@ let gameStarted = false;
 let seq = 0;
 
 const state = {
-  ball: { x: GAME_W / 2, y: GAME_H / 2, vx: BASE_BALL_SPEED, vy: BASE_BALL_SPEED, r: 10 },
+  ball: { x: GAME_W / 2, y: GAME_H / 2, vx: BASE_BALL_SPEED, vy: BASE_BALL_SPEED, r: 15 },
   paddles: [
-    { x: GAME_W / 2 - 50, y: 10, w: 100, h: 20 },
-    { x: GAME_W / 2 - 50, y: GAME_H - 30, w: 100, h: 20 }
+    { x: GAME_W / 2 - 50, y: 20, w: 100, h: 20 },
+    { x: GAME_W / 2 - 50, y: GAME_H - 50, w: 100, h: 20 }
   ],
   scores: [0, 0]
 };
@@ -139,7 +139,7 @@ function tick() {
       const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
       const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
       b.vy = -b.vy;
-      b.vx = offset * Math.max(1.5, speed);
+      b.vx = offset * Math.max(1.2, speed);
 
       const cur = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
       if (cur > MAX_SPEED) { const f = MAX_SPEED / cur; b.vx *= f; b.vy *= f; }
@@ -150,7 +150,7 @@ function tick() {
   }
 
   // score check with safety margin
-  const SAFE_MARGIN = 5; // جلوگیری از reset زودرس
+  const SAFE_MARGIN = 10; // جلوگیری از reset زودرس
   if (b.y < -SAFE_MARGIN) { 
     state.scores[1]++; 
     resetBall(0); // بعد از امتیاز توپ به سمت بازیکن بالا حرکت کند
@@ -289,11 +289,5 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
-
-
-
-
-
-
 
 
