@@ -41,14 +41,6 @@ const state = {
 //  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
 //  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
 //}
-function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
-  state.ball.x = GAME_W / 2;
-  state.ball.y = GAME_H / 2;
-  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6);
-  const dir = (towardsPlayer === 1) ? 1 : -1; // همیشه به سمت بازیکن پایین حرکت کند
-  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
-  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
-}
 
 
 
@@ -116,6 +108,15 @@ function broadcast(obj) {
  //   });
  // }
 //}
+// ball reset function
+function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
+  state.ball.x = GAME_W / 2;
+  state.ball.y = GAME_H / 2;
+  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6); // زاویه کوچک
+  const dir = (towardsPlayer === 1) ? 1 : -1;
+  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
+  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
+}
 
 let tickCount = 0;
 function tick() {
@@ -172,19 +173,6 @@ function tick() {
       }
     });
   }
-}
-
-
-
-
-// ball reset function
-function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
-  state.ball.x = GAME_W / 2;
-  state.ball.y = GAME_H / 2;
-  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6); // زاویه کوچک
-  const dir = (towardsPlayer === 1) ? 1 : -1;
-  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
-  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
 }
 
 setInterval(tick, 1000 / TICK_HZ);
@@ -301,6 +289,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
