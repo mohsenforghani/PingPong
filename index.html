@@ -46,17 +46,39 @@ let renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
 let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y: LOGICAL_H-30 }];
 
 // resize & DPR-safe
-function resizeCanvas(){
-  const ratio = window.devicePixelRatio || 1;
-  const cssW = window.innerWidth;
-  const cssH = window.innerHeight;
-  canvas.width = Math.round(cssW * ratio);
-  canvas.height = Math.round(cssH * ratio);
-  ctx.setTransform(1,0,0,1,0,0);
-  ctx.scale(ratio, ratio);
+function resizeCanvas() {
+    const ratio = window.devicePixelRatio || 1;
+
+    // اندازه واقعی صفحه
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+
+    // نسبت منطقی بازی
+    const gameRatio = LOGICAL_W / LOGICAL_H;
+    const screenRatio = screenW / screenH;
+
+    let renderW, renderH;
+
+    if (screenRatio > gameRatio) {
+        // صفحه عریض‌تر: ارتفاع محدود، عرض افزایش می‌یابد
+        renderH = screenH;
+        renderW = renderH * gameRatio;
+    } else {
+        // صفحه بلندتر یا هم‌اندازه: عرض محدود، ارتفاع افزایش می‌یابد
+        renderW = screenW;
+        renderH = renderW / gameRatio;
+    }
+
+    canvas.width = renderW * ratio;
+    canvas.height = renderH * ratio;
+    canvas.style.width = renderW + 'px';
+    canvas.style.height = renderH + 'px';
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); // تنظیم scale برای retina
 }
-window.addEventListener("resize", resizeCanvas);
+window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
+
 
 // WebSocket connect & handlers
 function connectWS(){
@@ -207,3 +229,4 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
