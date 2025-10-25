@@ -1,8 +1,8 @@
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
 
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 450;
+const GAME_WIDTH = 450;
+const GAME_HEIGHT = 800;
 const PADDLE_MARGIN = 10; // فاصله از بالا/پایین
 const PADDLE_WIDTH = 100;
 const PADDLE_HEIGHT = 20;
@@ -164,3 +164,4 @@ setInterval(()=>{
 }, 1000/50);
 
 console.log('Server started on port', process.env.PORT || 8080);
+
