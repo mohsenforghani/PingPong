@@ -33,14 +33,24 @@ const state = {
 };
 
 // reset ball
-function resetBall() {
+//function resetBall() {
+ // state.ball.x = GAME_W / 2;
+//  state.ball.y = GAME_H / 2;
+//  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6);
+//  const dir = Math.random() < 0.5 ? 1 : -1;
+//  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
+//  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
+//}
+function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
   state.ball.x = GAME_W / 2;
   state.ball.y = GAME_H / 2;
   const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6);
-  const dir = Math.random() < 0.5 ? 1 : -1;
+  const dir = (towardsPlayer === 1) ? 1 : -1; // همیشه به سمت بازیکن پایین حرکت کند
   state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
   state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
 }
+
+
 
 // send JSON with meta
 function send(ws, obj) {
@@ -220,6 +230,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
