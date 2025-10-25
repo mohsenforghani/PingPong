@@ -64,6 +64,14 @@ let gameState = null;
 let lastScores = null;
 let lastSentXLogical = null;
 const PADDLE_SEND_DELTA = 3; // اگر مقدار منطقی x بیش از 3 تغییر کرد، ارسال شود 
+
+let renderBall = { x: LOGICAL_W / 2, y: LOGICAL_H / 2 };
+let renderPaddles = [
+  { x: 0, y: 30 },
+  { x: 0, y: LOGICAL_H - 50 }
+];
+
+
   
 /* ====== اندازه کانواس ====== */
 function resizeCanvas(){
@@ -264,6 +272,8 @@ document.addEventListener('touchmove', (e) => {
 }, { passive: false });
 
 /* ====== رسم بازی (توپ و پدل‌ها) ====== */
+
+
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -271,41 +281,45 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+  const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
+  const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
+  const offsetY = (canvas.height - LOGICAL_H * scale) / 2;
+
   if (gameState) {
-    //const scaleX = canvas.width / LOGICAL_W;
-    //const scaleY = canvas.height / LOGICAL_H;
-    const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
-    const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
-    const offsetY = (canvas.height - LOGICAL_H * scale) / 2;
+    // ======= توپ =======
+    // حرکت توپ را به آرامی به موقعیت واقعی نزدیک کن
+    renderBall.x += (gameState.ball.x - renderBall.x) * 0.2; 
+    renderBall.y += (gameState.ball.y - renderBall.y) * 0.2;
 
-
-    
-    // توپ
-    const b = gameState.ball;
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    //ctx.arc(b.x * scaleX, b.y * scaleY, Math.max(2, b.radius * scaleX), 0, Math.PI * 2);
-    ctx.arc(offsetX + b.x * scale, offsetY + b.y * scale, Math.max(2, b.radius * scale), 0, Math.PI * 2);
+    ctx.arc(offsetX + renderBall.x * scale, offsetY + renderBall.y * scale, Math.max(2, gameState.ball.radius * scale), 0, Math.PI * 2);
     ctx.fill();
 
-    // پدل‌ها (ترسیم مستقیم از state)
+    // ======= پدل‌ها =======
     ctx.fillStyle = 'white';
-    gameState.paddles.forEach(p => {
-  
-      ctx.fillRect(offsetX + p.x * scale, offsetY + p.y * scale, p.w * scale, p.h * scale);
+    gameState.paddles.forEach((p, i) => {
+      // حرکت پدل‌ها را نرم کن
+      renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.2;
+      renderPaddles[i].y = p.y; // Y ثابت است
+
+      ctx.fillRect(offsetX + renderPaddles[i].x * scale, offsetY + renderPaddles[i].y * scale, p.w * scale, p.h * scale);
     });
+
   } else {
-    // اگر state هنوز نیامده، یک نوار لودینگ ساده رسم کن
+    // نوار لودینگ ساده
     ctx.fillStyle = '#222';
-    ctx.fillRect(canvas.width/2 - 80, canvas.height/2 - 6, 160, 12);
+    ctx.fillRect(canvas.width / 2 - 80, canvas.height / 2 - 6, 160, 12);
   }
 
   requestAnimationFrame(draw);
 }
+  
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
 
