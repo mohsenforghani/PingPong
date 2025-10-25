@@ -1,6 +1,8 @@
 // server.js
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+const GAME_WIDTH = 800;
+const GAME_HEIGHT = 600;
 
 /*
   players: آرایه‌ی دو عنصری نگه‌دارنده‌ی socket های بازیکنان
@@ -12,10 +14,10 @@ let gameStarted = false;
 let waitingPlayerId = null; // شناسهٔ بازیکنی که دکمه "در انتظار" را زده (null اگر هیچ‌کس منتظر نیست)
 
 let state = {
-  ball: { x: 400, y: 300, vx: 4, vy: 2, radius: 10 },
+ ball: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, vx: 4, vy: 2, radius: 10 },
   paddles: [
-    { x: 350, y: 30, w: 100, h: 20 },   // پدل بازیکن 0 (بالا)
-    { x: 350, y: 550, w: 100, h: 20 }   // پدل بازیکن 1 (پایین)
+   { x: GAME_WIDTH / 2 - 50, y: 30, w: 100, h: 20 },   // پدل بازیکن 0 (بالا)
+     { x: GAME_WIDTH / 2 - 50, y: GAME_HEIGHT - 30 - 20, w: 100, h: 20 }   // پدل بازیکن 1 (پایین)
   ],
   scores: [0, 0]
 };
@@ -23,11 +25,12 @@ let state = {
 function resetBall() {
   state.paddles[0].w = state.paddles[1].w = 100;
   state.paddles[0].h = state.paddles[1].h = 20;
-  state.ball.x = 400;
-  state.ball.y = 300;
-  state.ball.vx = (Math.random() - 0.5) * 6; // کمی افقی
-  state.ball.vy = Math.random() > 0.5 ? 4 : -4; // جهت عمودی تصادفی
+  state.ball.x = GAME_WIDTH / 2;
+  state.ball.y = GAME_HEIGHT / 2;
+  state.ball.vx = (Math.random() - 0.5) * 6;
+  state.ball.vy = Math.random() > 0.5 ? 4 : -4;
 }
+
 
 function resetGame() {
   state.scores = [0, 0];
@@ -223,15 +226,14 @@ setInterval(() => {
   });
 
   // گل شدن (وقتی توپ از بالا یا پایین خارج می‌شود)
-  if (b.y < 0) {
-    // توپ از بالاترین نقطه خارج شد -> بازیکن پایین امتیاز می‌گیرد
-    state.scores[1]++;
-    resetBall();
-  } else if (b.y > 600) {
-    // توپ از پایین خارج شد -> بازیکن بالا امتیاز می‌گیرد
-    state.scores[0]++;
-    resetBall();
-  }
+ if (b.y < 0) {
+  state.scores[1]++;
+  resetBall();
+} else if (b.y > GAME_HEIGHT) {
+  state.scores[0]++;
+  resetBall();
+}
+
 
   // ارسال وضعیت به همه
   broadcast({ type: 'state', state });
@@ -239,4 +241,5 @@ setInterval(() => {
 }, 1000 / 60);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
 
