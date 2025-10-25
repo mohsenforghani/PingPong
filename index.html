@@ -198,10 +198,13 @@ function draw(){
     // پاک کردن canvas
     ctx.clearRect(0, 0, displayW, displayH);
 
-    // مقیاس و offset برای حفظ Aspect Ratio
-    const scale = Math.min(displayW / LOGICAL_W, displayH / LOGICAL_H);
-    const offsetX = (displayW - LOGICAL_W * scale) / 2;
-    const offsetY = (displayH - LOGICAL_H * scale) / 2;
+    // scaleX و scaleY جداگانه
+    const scaleX = displayW / LOGICAL_W;
+    const scaleY = displayH / LOGICAL_H;
+
+    // offset برای وسط‌چین کردن بازی
+    const offsetX = (displayW - LOGICAL_W * scaleX) / 2;
+    const offsetY = (displayH - LOGICAL_H * scaleY) / 2;
 
     if(gameState){
         // smoothing توپ
@@ -213,9 +216,9 @@ function draw(){
         ctx.fillStyle = "#fff";
         ctx.beginPath();
         ctx.arc(
-            offsetX + renderBall.x * scale,
-            offsetY + renderBall.y * scale,
-            Math.max(2, gameState.ball.radius * scale),
+            offsetX + renderBall.x * scaleX,
+            offsetY + renderBall.y * scaleY,
+            Math.max(2, gameState.ball.radius * Math.min(scaleX, scaleY)), // radius تقریباً uniform
             0,
             Math.PI * 2
         );
@@ -226,16 +229,16 @@ function draw(){
             renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.3;
             renderPaddles[i].y = p.y;
             ctx.fillRect(
-                offsetX + renderPaddles[i].x * scale,
-                offsetY + renderPaddles[i].y * scale,
-                p.w * scale,
-                p.h * scale
+                offsetX + renderPaddles[i].x * scaleX,
+                offsetY + renderPaddles[i].y * scaleY,
+                p.w * scaleX,
+                p.h * scaleY
             );
         });
 
         // نمایش امتیاز
         ctx.fillStyle = "#fff";
-        ctx.font = `${Math.floor(24*scale)}px Tahoma`;
+        ctx.font = `${Math.floor(24 * Math.min(scaleX, scaleY))}px Tahoma`;
         ctx.textAlign = "center";
         ctx.fillText(
             `${gameState.scores[0]} - ${gameState.scores[1]}`,
@@ -246,7 +249,7 @@ function draw(){
     } else {
         // وقتی state آماده نیست، پیام لابی
         ctx.fillStyle = "#fff";
-        ctx.font = `${Math.floor(18*scale)}px Tahoma`;
+        ctx.font = `${Math.floor(18 * Math.min(scaleX, scaleY))}px Tahoma`;
         ctx.textAlign = "center";
         ctx.fillText(
             "در انتظار شروع بازی... (یا روی 'می‌خواهم بازی کنم' بزنید)",
@@ -262,5 +265,6 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
