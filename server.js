@@ -21,6 +21,8 @@ let state = {
 };
 
 function resetBall() {
+  state.paddles[0].w = state.paddles[1].w = 100;
+  state.paddles[0].h = state.paddles[1].h = 20;
   state.ball.x = 400;
   state.ball.y = 300;
   state.ball.vx = (Math.random() - 0.5) * 6; // کمی افقی
@@ -29,6 +31,8 @@ function resetBall() {
 
 function resetGame() {
   state.scores = [0, 0];
+  state.paddles[0].w = state.paddles[1].w = w;
+  state.paddles[0].h = state.paddles[1].h = h;
   resetBall();
   gameStarted = false;
   // توجه: موقع قطع اتصال یا ریست بازی ممکن است لازم باشد که به کلاینتها وضعیت جدید ارسال شود
@@ -235,3 +239,4 @@ setInterval(() => {
 }, 1000 / 60);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
