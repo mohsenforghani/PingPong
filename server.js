@@ -12,8 +12,8 @@ let waitingPlayerId = null;    // شناسه بازیکنی که دکمه انت
 let state = {
   ball: { x: 400, y: 300, vx: 4, vy: 2, radius: 10 },
   paddles: [
-    { x: 50, y: 250, w: 20, h: 100 },
-    { x: 730, y: 250, w: 20, h: 100 }
+    { x: 350, y: 30, w: 100, h: 20 },   // پدل بازیکن 1 (بالا)
+    { x: 350, y: 550, w: 100, h: 20 }   // پدل بازیکن 2 (پایین)
   ],
   scores: [0, 0]
 };
@@ -21,9 +21,10 @@ let state = {
 function resetBall() {
   state.ball.x = 400;
   state.ball.y = 300;
-  state.ball.vx = Math.random() > 0.5 ? 4 : -4;
-  state.ball.vy = (Math.random() - 0.5) * 6;
+  state.ball.vx = (Math.random() - 0.5) * 6; // حرکت جزئی افقی
+  state.ball.vy = Math.random() > 0.5 ? 4 : -4; // حرکت اصلی عمودی
 }
+
 
 function resetGame() {
   state.scores = [0, 0];
@@ -93,40 +94,43 @@ setInterval(() => {
   let b = state.ball;
   b.x += b.vx;
   b.y += b.vy;
-
-  // برخورد با بالا و پایین
-  if (b.y - b.radius < 0 || b.y + b.radius > 600) {
-    b.vy *= -1;
-  }
+  
+ // برخورد با دیواره‌های چپ و راست
+if (b.x - b.radius < 0 || b.x + b.radius > 800) {
+  b.vx *= -1;
+}
 
   // برخورد با راکت‌ها
-  state.paddles.forEach((p, i) => {
-    if (
-      b.x + b.radius > p.x &&
-      b.x - b.radius < p.x + p.w &&
-      b.y + b.radius > p.y &&
-      b.y - b.radius < p.y + p.h
-    ) {
-      b.vx *= -1; // تغییر جهت افقی
-      // اثر ضربه بر اساس فاصله از مرکز راکت
-      const offset = (b.y - (p.y + p.h / 2)) / (p.h / 2);
-      b.vy += offset * 3;
-      // محدود کردن سرعت توپ
-      const maxSpeed = 8;
-      b.vx = Math.max(-maxSpeed, Math.min(maxSpeed, b.vx));
-      b.vy = Math.max(-maxSpeed, Math.min(maxSpeed, b.vy));
-    }
-  });
+ // برخورد با پدل‌ها (بالا و پایین)
+state.paddles.forEach((p, i) => {
+  if (
+    b.y + b.radius > p.y && 
+    b.y - b.radius < p.y + p.h &&
+    b.x + b.radius > p.x &&
+    b.x - b.radius < p.x + p.w
+  ) {
+    b.vy *= -1; // تغییر جهت عمودی
+    // اثر برخورد با فاصله از مرکز پدل
+    const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
+    b.vx += offset * 3;
+    const maxSpeed = 8;
+    b.vx = Math.max(-maxSpeed, Math.min(maxSpeed, b.vx));
+    b.vy = Math.max(-maxSpeed, Math.min(maxSpeed, b.vy));
+  }
+});
+
 
   // گل شدن
-  if (b.x < 0) {
-    state.scores[1]++;
-    resetBall();
-  } else if (b.x > 800) {
-    state.scores[0]++;
-    resetBall();
-  }
+ if (b.y < 0) {
+  state.scores[1]++; // بازیکن پایین گل زد
+  resetBall();
+} else if (b.y > 600) {
+  state.scores[0]++; // بازیکن بالا گل زد
+  resetBall();
+}
+
 
   broadcast({ type: 'state', state });
 }, 1000 / 60);
+
 
