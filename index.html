@@ -1,243 +1,138 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no" />
-<title>Pong Online - Responsive Smooth</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>بازی آنلاین پینگ‌پونگ</title>
 <style>
-  html,body{height:100%;width:100%;margin:0;padding:0;background:black;overflow:hidden}
-  canvas{display:block;}
-  /* overlay UI */
-  #ui {
-    position: absolute;
-    left: 0; top: 0; right: 0;
-    display:flex; align-items:center; justify-content:center;
-    pointer-events:none; /* allow canvas touches */
-  }
-  .panel {
-    pointer-events:auto;
-    background: rgba(0,0,0,0.6);
-    color: #fff;
-    padding: 12px 18px;
-    border-radius: 10px;
-    font-family: Tahoma, Arial;
-    text-align:center;
-  }
-  button { padding:10px 14px; font-size:16px; border-radius:8px; border:none; background:#27ae60; color:#fff; cursor:pointer }
-  button.secondary { background:#e67e22 }
-  #status { margin-bottom:8px; font-size:14px; }
+html, body {
+  margin: 0;
+  padding: 0;
+  background: black;
+  overflow: hidden;
+  height: 100%;
+  width: 100%;
+}
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 20px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #00ff88;
+  color: black;
+}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<div id="ui"><div class="panel" id="panel">
-  <div id="status">در انتظار اتصال به سرور...</div>
-  <div id="btnArea"></div>
-</div></div>
+
+<canvas id="gameCanvas"></canvas>
+<button id="startBtn">در انتظار بازیکن دوم...</button>
 
 <script>
-/* ---------- config ---------- */
-const WS_URL = 'wss://pingpong-te0t.onrender.com'; // <--- آدرس Render تو
-const SERVER_W = 800, SERVER_H = 600; // ابعاد منطقی سرور
-const SMOOTH = 0.14; // مقدار interpolation
-
-/* ---------- canvas ---------- */
-const canvas = document.getElementById('c');
+const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-function resize(){ canvas.width = innerWidth; canvas.height = innerHeight; }
-addEventListener('resize', resize); resize();
+const btn = document.getElementById('startBtn');
 
-/* ---------- UI ---------- */
-const statusEl = document.getElementById('status');
-const btnArea = document.getElementById('btnArea');
-
-function setStatus(t){ statusEl.textContent = t; }
-
-/* ---------- networking ---------- */
-let ws = null;
-let myId = null;
-function connect(){
-  ws = new WebSocket(WS_URL);
-  ws.binaryType = 'arraybuffer';
-  ws.onopen = ()=> { setStatus('متصل به سرور'); renderButtons(); };
-  ws.onclose = ()=> { setStatus('اتصال قطع شد'); clearButtons(); };
-  ws.onerror = (e)=> { setStatus('خطا در اتصال'); };
-  ws.onmessage = (ev)=> {
-    try {
-      const d = JSON.parse(ev.data);
-      // if it's id assignment
-      if(typeof d.id === 'number' && myId === null){
-        myId = d.id;
-        setStatus('شما بازیکن شماره ' + (myId+1));
-        renderButtons();
-        return;
-      }
-      // otherwise it's compact game state
-      targetState = {
-        ball: { x: d.b.x, y: d.b.y, vx: d.b.vx, vy: d.b.vy, r: d.b.r },
-        paddlesY: [d.p[0], d.p[1]],
-        scores: d.s,
-        st: d.st
-      };
-      // show lobby UI if st changed
-      renderButtons();
-    } catch(e){}
-  };
+// تنظیم فول‌اسکرین
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
 }
-connect();
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-/* ---------- send small messages ---------- */
-function sendPaddle(y){
-  if(myId === null || !ws || ws.readyState!==1) return;
-  const msg = JSON.stringify({ t:'p', id: myId, y: Math.round(y) });
-  ws.send(msg);
-}
-function sendReady(){
-  if(myId===null) return;
-  ws.send(JSON.stringify({ t:'ready', id: myId }));
-}
-function sendStart(){
-  if(myId===null) return;
-  ws.send(JSON.stringify({ t:'start', id: myId }));
-}
+// اتصال به WebSocket
+const ws = new WebSocket('wss://pingpong-te0t.onrender.com');
+let playerId = null;
+let gameStarted = false;
+let gameState = null;
 
-/* ---------- local interpolation state ---------- */
-let state = {
-  ball: { x: SERVER_W/2, y: SERVER_H/2, r:10 },
-  paddles: [ {x:20,y:SERVER_H/2-50,w:20,h:100},{x:SERVER_W-40,y:SERVER_H/2-50,w:20,h:100} ],
-  scores: [0,0],
-  st: 'waiting'
-};
-let targetState = JSON.parse(JSON.stringify(state));
-
-/* ---------- UI buttons logic (لوبي) ---------- */
-function clearButtons(){
-  btnArea.innerHTML = '';
-}
-function renderButtons(){
-  clearButtons();
-  const st = targetState.st || state.st;
-  // show messages depending on status & myId & connections
-  if(!ws || ws.readyState!==1){
-    setStatus('در حال اتصال...');
-    return;
-  }
-  setStatus('آماده. وضعیت: ' + st);
-  // If less than 2 players connected we may still be in lobby; server doesn't explicitly send count
-  // We rely on st field:
-  if(st === 'waiting' || st === 'lobby'){
-    // if I haven't marked ready, show Ready button
-    const readyBtn = document.createElement('button');
-    readyBtn.textContent = 'منتظر نفر دوم (Ready)';
-    readyBtn.onclick = ()=> { sendReady(); readyBtn.disabled = true; readyBtn.textContent='منتظر...'; };
-    btnArea.appendChild(readyBtn);
-
-    // if both ready and I'm player 2, show Start button
-    // We cannot know "both ready" exactly on client reliably without more server info,
-    // but server sets st='lobby' and will start only after receiving start and both ready
-    // So always show Start for player 2
-    if(myId === 1){
-      const startBtn = document.createElement('button');
-      startBtn.className = 'secondary';
-      startBtn.textContent = 'شروع بازی (Start)';
-      startBtn.onclick = ()=> { sendStart(); startBtn.disabled = true; startBtn.textContent='در حال شروع...'; };
-      startBtn.style.marginLeft = '10px';
-      btnArea.appendChild(startBtn);
+// دریافت پیام از سرور
+ws.onmessage = (msg) => {
+  const data = JSON.parse(msg.data);
+  if (data.type === 'assign') {
+    playerId = data.playerId;
+    if (playerId === 0) {
+      btn.textContent = "در انتظار بازیکن دوم...";
+    } else {
+      btn.textContent = "شروع بازی";
+      btn.disabled = false;
     }
-  } else if(st === 'running'){
-    // hide buttons
-    clearButtons();
-    setStatus('بازی در حال اجرا');
-  } else if(st === 'pause'){
-    setStatus('گل! در حال آماده‌سازی مجدد');
   }
+  if (data.type === 'state') {
+    gameState = data.state;
+  }
+  if (data.type === 'full') {
+    alert("بازی پر است، بعداً تلاش کن!");
+  }
+};
+
+// دکمه شروع
+btn.onclick = () => {
+  if (playerId === 1) {
+    ws.send(JSON.stringify({ type: 'start' }));
+    gameStarted = true;
+    btn.style.display = 'none';
+  }
+};
+
+// ارسال موقعیت راکت به سرور
+function sendPaddle(y) {
+  if (playerId === null) return;
+  ws.send(JSON.stringify({ type: 'paddle', player: playerId, y }));
 }
 
-/* ---------- input handling (touch + mouse) ---------- */
-let isTouch = false;
-function clientToServerY(clientY){
-  // convert screen Y to server coordinate H
-  const ratio = SERVER_H / canvas.height;
-  return clientY * ratio;
-}
-canvas.addEventListener('mousemove', (e)=>{
-  if(myId === null) return;
-  const sy = clientToServerY(e.clientY);
-  sendPaddle(sy);
+// کنترل موس
+document.addEventListener('mousemove', e => {
+  const y = e.clientY * (600 / canvas.height) - 50;
+  sendPaddle(y);
 });
-canvas.addEventListener('touchmove', (e)=>{
-  isTouch = true;
+
+// کنترل لمس
+document.addEventListener('touchmove', e => {
   e.preventDefault();
-  if(myId === null) return;
-  const touch = e.touches[0];
-  const sy = clientToServerY(touch.clientY);
-  sendPaddle(sy);
-},{passive:false});
+  const y = e.touches[0].clientY * (600 / canvas.height) - 50;
+  sendPaddle(y);
+}, { passive: false });
 
-/* also allow tap to move paddle center quickly (optional) */
-canvas.addEventListener('click', (e)=>{
-  if(myId===null) return;
-  const sy = clientToServerY(e.clientY);
-  sendPaddle(sy);
-});
+// رسم بازی
+function draw() {
+  if (!gameState) return requestAnimationFrame(draw);
 
-/* ---------- rendering loop (smooth interp) ---------- */
-function lerp(a,b,t){ return a + (b-a)*t; }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-function render(){
-  // smooth interpolate ball & paddles toward targetState
-  state.ball.x = lerp(state.ball.x, targetState.ball.x, SMOOTH);
-  state.ball.y = lerp(state.ball.y, targetState.ball.y, SMOOTH);
-  state.ball.r = targetState.ball.r;
+  const scaleX = canvas.width / 800;
+  const scaleY = canvas.height / 600;
 
-  // paddles
-  for(let i=0;i<2;i++){
-    state.paddles[i].y = lerp(state.paddles[i].y, targetState.paddlesY[i], SMOOTH);
-  }
-  state.scores = targetState.scores;
-  state.st = targetState.st;
-
-  // clear
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  // scale
-  const sx = canvas.width / SERVER_W;
-  const sy = canvas.height / SERVER_H;
-
-  // draw goal bars (top/bottom)
-  ctx.fillStyle = '#b71c1c';
-  ctx.fillRect(0,0,canvas.width,6);
-  ctx.fillRect(0,canvas.height-6,canvas.width,6);
-
-  // ball
-  ctx.fillStyle = '#fff';
+  // توپ
+  ctx.fillStyle = "white";
+  const b = gameState.ball;
   ctx.beginPath();
-  ctx.arc(state.ball.x * sx, state.ball.y * sy, state.ball.r * sx, 0, Math.PI*2);
+  ctx.arc(b.x * scaleX, b.y * scaleY, b.radius * scaleX, 0, Math.PI * 2);
   ctx.fill();
 
-  // paddles
-  ctx.fillStyle = '#fff';
-  for(let i=0;i<2;i++){
-    const p = state.paddles[i];
-    ctx.fillRect(p.x * sx, p.y * sy, p.w * sx, p.h * sy);
-  }
+  // راکت‌ها
+  ctx.fillStyle = "white";
+  gameState.paddles.forEach(p => {
+    ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
+  });
 
-  // scores
-  ctx.fillStyle = '#fff';
-  ctx.font = Math.round(28 * sy) + 'px Tahoma';
-  ctx.textAlign = 'center';
-  ctx.fillText(state.scores[0], canvas.width*0.25, 40 * sy);
-  ctx.fillText(state.scores[1], canvas.width*0.75, 40 * sy);
+  // امتیاز
+  ctx.font = `${24 * scaleY}px Arial`;
+  ctx.fillText(`${gameState.scores[0]}  -  ${gameState.scores[1]}`, canvas.width/2 - 40, 50);
 
-  // status small
-  ctx.font = Math.round(14 * sy) + 'px Tahoma';
-  ctx.textAlign = 'center';
-  ctx.fillText('حالت: ' + (state.st||''), canvas.width/2, 20*sy);
-
-  requestAnimationFrame(render);
+  requestAnimationFrame(draw);
 }
-render();
-
+draw();
 </script>
 </body>
 </html>
