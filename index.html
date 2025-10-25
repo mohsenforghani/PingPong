@@ -252,20 +252,28 @@ function draw() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   if (gameState) {
-    const scaleX = canvas.width / LOGICAL_W;
-    const scaleY = canvas.height / LOGICAL_H;
+    //const scaleX = canvas.width / LOGICAL_W;
+    //const scaleY = canvas.height / LOGICAL_H;
+    const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
+    const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
+    const offsetY = (canvas.height - LOGICAL_H * scale) / 2;
 
+
+    
     // توپ
     const b = gameState.ball;
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    ctx.arc(b.x * scaleX, b.y * scaleY, Math.max(2, b.radius * scaleX), 0, Math.PI * 2);
+    //ctx.arc(b.x * scaleX, b.y * scaleY, Math.max(2, b.radius * scaleX), 0, Math.PI * 2);
+    ctx.arc(offsetX + b.x * scale, offsetY + b.y * scale, Math.max(2, b.radius * scale), 0, Math.PI * 2);
     ctx.fill();
 
     // پدل‌ها (ترسیم مستقیم از state)
     ctx.fillStyle = 'white';
     gameState.paddles.forEach(p => {
-      ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
+    //ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
+    ctx.fillRect(offsetX + p.x * scale, offsetY + p.y * scale, p.w * scale, p.h * scale);
+       scoreBox.innerHTML = `<span style="font-size:${Math.max(16, 24 * (canvas.width/LOGICAL_W))}px">${gameState.scores[0]} &nbsp; - &nbsp; ${gameState.scores[1]}</span>`;
     });
   } else {
     // اگر state هنوز نیامده، یک نوار لودینگ ساده رسم کن
@@ -279,3 +287,4 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
