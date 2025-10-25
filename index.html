@@ -158,6 +158,7 @@ function connectWS(){
 
       case 'state':
         gameState = data.state;
+        console.log('paddles from server:', gameState.paddles);
         // نمایش امتیاز
         scoreBox.innerHTML = `<span style="font-size:${Math.max(16, 24 * (canvas.width/800))}px">${gameState.scores[0]} &nbsp; - &nbsp; ${gameState.scores[1]}</span>`;
         break;
@@ -211,8 +212,15 @@ let lastSent = 0;
 const SEND_INTERVAL = 30; // میلی‌ثانیه حداقل بین ارسال‌ها
 
 function clientToLogicalX(clientX) {
-  return clientX * (LOGICAL_W / canvas.width);
+  // همان محاسباتی که در draw استفاده کردیم:
+  const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
+  const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
+  // کلاینتX نسبت به offset
+  const logicalX = (clientX - offsetX) / scale;
+  return logicalX;
 }
+
+  
 
 function sendPaddleXByClientX(clientX) {
   if (!ws || ws.readyState !== WebSocket.OPEN || playerId === null || !gameStarted) return;
@@ -287,4 +295,5 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
