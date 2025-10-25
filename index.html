@@ -180,18 +180,21 @@ function onMessage(e) {
   if (t === 'state') {
     const s = data.state;
     if (!s) return;
-    // attach server timestamp marker (use meta.ts if available)
     const serverTs = (data.meta && data.meta.ts) ? data.meta.ts : Date.now();
-    lastServerTs = serverTs;
-    // push into buffer for interpolation
+
+    // بررسی reset یا جابجایی شدید توپ
+    const lastBall = stateBuffer.length ? stateBuffer[stateBuffer.length - 1].state.ball : null;
+    if (lastBall && Math.abs(lastBall.y - s.ball.y) > 50) {
+        stateBuffer = []; // توپ reset شد، buffer را پاک می‌کنیم
+    }
+
     stateBuffer.push({ ts: serverTs, state: s });
-    // keep last few entries (2-6)
+    lastServerTs = serverTs;
     while (stateBuffer.length > 10) stateBuffer.shift();
-    // update immediate authoritative copy for score etc
     gameState = s;
-    //if (s.scores) scoreBox.textContent = `${s.scores[0]} - ${s.scores[1]}`;
     return;
-  }
+}
+
   if (t === 'ping') {
     // reply with pong immediately
     send({ type: 'pong', ts: Date.now() });
@@ -298,7 +301,7 @@ function drawLoop() {
 
   // compute render timestamp (server time) we want to display
   const now = Date.now();
-  const renderTs = lastServerTs ? (lastServerTs + (now - lastServerTs) - INTERP_MS) : now - INTERP_MS;
+  const renderTs = Date.now() - INTERP_MS;
 
   // interpolation
   let drawState = null;
@@ -310,8 +313,8 @@ function drawLoop() {
 
   if (drawState) {
     // smooth renderBall toward interpolated ball (extra smoothing)
-    renderBall.x += (drawState.ball.x - renderBall.x) * 0.18;
-    renderBall.y += (drawState.ball.y - renderBall.y) * 0.18;
+   renderBall.x = drawState.ball.x;
+renderBall.y = drawState.ball.y;
 
     // draw ball
     ctx.fillStyle = '#fff';
@@ -360,5 +363,6 @@ connect();
 </script>
 </body>
 </html>
+
 
 
