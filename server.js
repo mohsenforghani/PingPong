@@ -4,6 +4,10 @@ const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
 
 let players = [];
 let gameStarted = false;
+let waitingForSecond = false;  // آیا بازیکن اول دکمه انتظار را زده؟
+let waitingPlayerId = null;    // شناسه بازیکنی که دکمه انتظار را زده
+
+
 
 let state = {
   ball: { x: 400, y: 300, vx: 4, vy: 2, radius: 10 },
@@ -53,12 +57,26 @@ wss.on('connection', ws => {
     if (data.type === 'paddle' && typeof data.player === 'number' && data.player < 2) {
       state.paddles[data.player].y = Math.max(0, Math.min(600 - state.paddles[data.player].h, data.y));
     }
-
-    if (data.type === 'start' && players.length === 2) {
-      gameStarted = true;
-      broadcast({ type: 'start' });
-      console.log('Game started!');
-    }
+// بازیکن اول دکمه انتظار را زد
+  if (data.type === 'waitForPlayer') {
+    waitingForSecond = true;
+    waitingPlayerId = playerId;
+    // اطلاع نفر دوم
+    broadcast({ type: 'waiting', waitingPlayerId });
+  }
+ // نفر دوم دکمه بله برای شروع بازی را زد
+  if (data.type === 'start' && players.length === 2 && waitingForSecond) {
+    gameStarted = true;
+    waitingForSecond = false;    // حالا دکمه‌ها پاک می‌شوند
+    broadcast({ type: 'start' });
+  }
+    
+  // نفر دوم دکمه بله برای شروع بازی را زد
+  if (data.type === 'start' && players.length === 2 && waitingForSecond) {
+    gameStarted = true;
+    waitingForSecond = false;    // حالا دکمه‌ها پاک می‌شوند
+    broadcast({ type: 'start' });
+  }
   });
 
   ws.on('close', () => {
@@ -111,3 +129,4 @@ setInterval(() => {
 
   broadcast({ type: 'state', state });
 }, 1000 / 60);
+
