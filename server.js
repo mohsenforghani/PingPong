@@ -143,4 +143,5 @@ setInterval(()=>{
   }
 
   broadcast({type:'state', state});
-}, 1000/60);
+}, 1000/30);
+
