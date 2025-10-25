@@ -1,54 +1,40 @@
-// server.js
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 450;
+const PADDLE_MARGIN = 10; // فاصله از بالا/پایین
+const PADDLE_WIDTH = 100;
+const PADDLE_HEIGHT = 20;
 
-/*
-  players: آرایه‌ی دو عنصری نگه‌دارنده‌ی socket های بازیکنان
-  index 0 => بازیکن بالا (Player 0)
-  index 1 => بازیکن پایین (Player 1)
-*/
+// آرایه‌ی بازیکنان
 let players = [null, null];
 let gameStarted = false;
-let waitingPlayerId = null; // شناسهٔ بازیکنی که دکمه "در انتظار" را زده (null اگر هیچ‌کس منتظر نیست)
+let waitingPlayerId = null;
 
 let state = {
- ball: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, vx: 4, vy: 2, radius: 10 },
+  ball: { x: GAME_WIDTH / 2, y: GAME_HEIGHT / 2, vx: 4, vy: 2, radius: 10 },
   paddles: [
-   { x: GAME_WIDTH / 2 - 50, y: 30, w: 100, h: 20 },   // پدل بازیکن 0 (بالا)
-     { x: GAME_WIDTH / 2 - 50, y: GAME_HEIGHT - 30 - 20, w: 100, h: 20 }   // پدل بازیکن 1 (پایین)
+    { x: GAME_WIDTH / 2 - PADDLE_WIDTH/2, y: PADDLE_MARGIN, w: PADDLE_WIDTH, h: PADDLE_HEIGHT },
+    { x: GAME_WIDTH / 2 - PADDLE_WIDTH/2, y: GAME_HEIGHT - PADDLE_HEIGHT - PADDLE_MARGIN, w: PADDLE_WIDTH, h: PADDLE_HEIGHT }
   ],
   scores: [0, 0]
 };
 
 function resetBall() {
-  state.paddles[0].w = state.paddles[1].w = 100;
-  state.paddles[0].h = state.paddles[1].h = 20;
-  // بازیکن بالا
-  state.paddles[0].y = 30;
-
-  // بازیکن پایین
-  state.paddles[1].y = GAME_HEIGHT - 30 - state.paddles[1].h;
-  
-  const angle = (Math.random() * Math.PI / 4) - Math.PI / 8; // ±22.5 درجه
-  const speed = 5; // سرعت ثابت
+  state.ball.x = GAME_WIDTH/2;
+  state.ball.y = GAME_HEIGHT/2;
+  const angle = (Math.random() * Math.PI/4) - Math.PI/8; // ±22.5 درجه
+  const speed = 5;
   state.ball.vx = speed * Math.sin(angle);
   state.ball.vy = Math.random() > 0.5 ? speed * Math.cos(angle) : -speed * Math.cos(angle);
-}
 
-
-function resetGame() {
-  state.scores = [0, 0];
-  state.paddles[0].w = state.paddles[1].w = w;
-  state.paddles[0].h = state.paddles[1].h = h;
-  resetBall();
-  gameStarted = false;
-  // توجه: موقع قطع اتصال یا ریست بازی ممکن است لازم باشد که به کلاینتها وضعیت جدید ارسال شود
+  // مطمئن شو پدل‌ها موقعیت درست دارند
+  state.paddles[0].y = PADDLE_MARGIN;
+  state.paddles[1].y = GAME_HEIGHT - PADDLE_HEIGHT - PADDLE_MARGIN;
 }
 
 function broadcast(data) {
-  // stringify once (به جای stringify داخل حلقه)
   const payload = JSON.stringify(data);
   players.forEach(p => {
     if (p && p.readyState === WebSocket.OPEN) {
@@ -57,9 +43,7 @@ function broadcast(data) {
   });
 }
 
-
 wss.on('connection', ws => {
-  // پیدا کردن یک اسلات خالی
   const slot = players.findIndex(p => p === null);
   if (slot === -1) {
     ws.send(JSON.stringify({ type: 'full' }));
@@ -67,203 +51,116 @@ wss.on('connection', ws => {
     return;
   }
 
-  // ثبت بازیکن
   players[slot] = ws;
   ws.playerId = slot;
   ws.send(JSON.stringify({ type: 'assign', playerId: slot }));
-  console.log(`Player ${slot} connected`);
 
-  // اگر قبلاً کسی دکمه انتظار را زده، به این بازیکن گزارش بده
   if (waitingPlayerId !== null) {
     if (waitingPlayerId === slot) {
-      // بازیکنی که خودش قبلاً انتظار گذاشته دوباره وصل شده
       ws.send(JSON.stringify({ type: 'waiting_for_opponent', waitingPlayerId }));
     } else {
-      // شخص دیگری منتظر است -> به این بازیکن اطلاع بده که opponent waiting است
       ws.send(JSON.stringify({ type: 'opponent_waiting', waitingPlayerId }));
     }
   } else {
-    // هیچ‌کس منتظر نیست
     ws.send(JSON.stringify({ type: 'no_waiting' }));
   }
 
-  // پیام‌های ورودی از کلاینت
   ws.on('message', msg => {
     let data;
-    try {
-      data = JSON.parse(msg);
-    } catch (e) {
-      console.warn('invalid json from client:', msg);
-      return;
-    }
+    try { data = JSON.parse(msg); } catch(e){ return; }
 
-    // حرکت پدل (ما انتظار داریم کلاینت فیلد x را بفرستد برای پدل‌های افقی بالا/پایین)
-    if (data.type === 'paddle' && typeof data.player === 'number' && data.player >= 0 && data.player < 2) {
+    // حرکت پدل
+    if (data.type === 'paddle' && typeof data.player === 'number' && data.player >=0 && data.player<2) {
       if (typeof data.x === 'number') {
-        // محدود کردن حد چپ/راست برای پدل
-        const maxLeft = 800 - state.paddles[data.player].w;
+        const maxLeft = GAME_WIDTH - state.paddles[data.player].w;
         state.paddles[data.player].x = Math.max(0, Math.min(maxLeft, data.x));
       }
       return;
     }
 
-    // بازیکن درخواست "در انتظار بودن" داده
+    // waitForPlayer
     if (data.type === 'waitForPlayer') {
       if (waitingPlayerId === null) {
         waitingPlayerId = ws.playerId;
-        // به خودِ منتظر اطلاع ده
         ws.send(JSON.stringify({ type: 'waiting_for_opponent', waitingPlayerId }));
-        // به بازیکنِ مقابل (اگر متصل است) اطلاع ده که opponent در انتظار است
         const other = 1 - ws.playerId;
-        if (players[other] && players[other].readyState === WebSocket.OPEN) {
+        if (players[other] && players[other].readyState===WebSocket.OPEN) {
           players[other].send(JSON.stringify({ type: 'opponent_waiting', waitingPlayerId }));
         }
-        console.log(`Player ${waitingPlayerId} set as waiting`);
       } else {
-        // کسی قبلاً منتظر بوده — به درخواست‌کننده بگو که عملیات موفق نبود
         ws.send(JSON.stringify({ type: 'wait_failed', waitingPlayerId }));
       }
       return;
     }
 
-    // کلاینت بررسی می‌خواهد بداند آیا کسی منتظر است
     if (data.type === 'checkWaiting') {
-      if (waitingPlayerId === null) {
-        ws.send(JSON.stringify({ type: 'no_waiting' }));
-      } else if (waitingPlayerId === ws.playerId) {
-        ws.send(JSON.stringify({ type: 'waiting_for_opponent', waitingPlayerId }));
-      } else {
-        ws.send(JSON.stringify({ type: 'opponent_waiting', waitingPlayerId }));
-      }
+      if (waitingPlayerId===null) ws.send(JSON.stringify({ type:'no_waiting' }));
+      else if (waitingPlayerId===ws.playerId) ws.send(JSON.stringify({ type:'waiting_for_opponent', waitingPlayerId }));
+      else ws.send(JSON.stringify({ type:'opponent_waiting', waitingPlayerId }));
       return;
     }
 
-    // بازیکن دوم قبول کرد
-    if (data.type === 'acceptMatch') {
-      // فقط اگر کسی در حالت انتظار باشد و کسی دیگر این پیام را بفرستد و دو بازیکن متصل باشند
-      const other = waitingPlayerId;
-      if (waitingPlayerId !== null && ws.playerId !== waitingPlayerId
-          && players[0] && players[1] && players[0].readyState === WebSocket.OPEN && players[1].readyState === WebSocket.OPEN) {
+    if (data.type==='acceptMatch') {
+      if (waitingPlayerId !== null && ws.playerId !== waitingPlayerId && players[0] && players[1]) {
         gameStarted = true;
         waitingPlayerId = null;
         resetBall();
-        broadcast({ type: 'start' });
-        console.log(`Game started by player ${ws.playerId} (accepted match).`);
-      } else {
-        ws.send(JSON.stringify({ type: 'accept_failed' }));
+        broadcast({ type:'start' });
       }
       return;
     }
 
-    // بازیکن دوم رد کرد
-    if (data.type === 'declineMatch') {
+    if (data.type==='declineMatch') {
       const waiter = waitingPlayerId;
-      if (waiter !== null && players[waiter] && players[waiter].readyState === WebSocket.OPEN) {
-        players[waiter].send(JSON.stringify({ type: 'declined' }));
+      if (waiter !== null && players[waiter] && players[waiter].readyState===WebSocket.OPEN) {
+        players[waiter].send(JSON.stringify({ type:'declined' }));
       }
-      waitingPlayerId = null;
-      // به همه بگو که اکنون هیچ‌کس منتظر نیست (اختیاری)
-      broadcast({ type: 'no_waiting' });
-      console.log(`Player ${ws.playerId} declined the waiting player.`);
+      waitingPlayerId=null;
+      broadcast({ type:'no_waiting' });
       return;
     }
-
-    // شاید بخواهی پیام start مستقیم هم پشتیبانی کنی (اما ما از acceptMatch استفاده می‌کنیم)
-    if (data.type === 'start') {
-      // فقط در صورتی که دو بازیکن متصل باشند و هیچ‌کس در حالت انتظار نباشد (یا اگر این نحو را ترجیح می‌دهی، می‌توانی شرایط دیگر را تعریف کنی)
-      if (players[0] && players[1] && players[0].readyState === WebSocket.OPEN && players[1].readyState === WebSocket.OPEN) {
-        gameStarted = true;
-        waitingPlayerId = null;
-        resetBall();
-        broadcast({ type: 'start' });
-        console.log('Game started by start message.');
-      }
-      return;
-    }
-
-    // پیام‌های دیگر نادیده گرفته می‌شوند
   });
 
   ws.on('close', () => {
     const id = ws.playerId;
-    console.log(`Player ${id} disconnected`);
-    // آزاد کردن اسلات
-    if (typeof id === 'number') players[id] = null;
-
-    // اگر بازیکنِ منتظر قطع شد، وضعیت انتظار را پاک کن و اطلاع بده
-    if (waitingPlayerId === id) {
-      waitingPlayerId = null;
-      broadcast({ type: 'no_waiting' });
-    }
-
-    // ریست بازی (اگر خواستی می‌تونی به جای ریست کامل فقط gameStarted=false کنی)
-    resetGame();
+    players[id] = null;
+    if (waitingPlayerId===id) waitingPlayerId=null;
+    gameStarted=false;
+    broadcast({ type:'no_waiting' });
   });
-
 });
 
-// حلقه بازی (۶۰ فریم)
-setInterval(() => {
+// حلقه بازی 50fps
+setInterval(()=>{
   if (!gameStarted) return;
-
   let b = state.ball;
   b.x += b.vx;
   b.y += b.vy;
 
-  // برخورد با دیواره‌های چپ و راست -> معکوس کردن vx
-  if (b.x - b.radius < 0 || b.x + b.radius > 800) {
-    b.vx *= -1;
-  }
+  // برخورد با دیواره‌ها
+  if (b.x-b.radius<0 || b.x+b.radius>GAME_WIDTH) b.vx*=-1;
 
-  // برخورد با پدل‌ها (بالا و پایین)
- state.paddles.forEach((p, i) => {
-  if (
-    b.y + b.radius > p.y &&
-    b.y - b.radius < p.y + p.h &&
-    b.x + b.radius > p.x &&
-    b.x - b.radius < p.x + p.w
-  ) {
-    // فاصله مرکز توپ تا مرکز پدل
-    const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2); // -1 تا 1
-
-    // محاسبه سرعت کل توپ
-    const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-
-    // معکوس عمودی و تنظیم زاویه بر اساس offset
-    b.vy *= -1;
-    b.vx = offset * speed;
-
-    // محدود کردن حداکثر سرعت
-    const maxSpeed = 8;
-    const currentSpeed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-    if (currentSpeed > maxSpeed) {
-      const factor = maxSpeed / currentSpeed;
-      b.vx *= factor;
-      b.vy *= factor;
+  // برخورد با پدل‌ها
+  state.paddles.forEach(p=>{
+    if (b.y+b.radius>p.y && b.y-b.radius<p.y+p.h && b.x+b.radius>p.x && b.x-b.radius<p.x+p.w){
+      const offset = (b.x-(p.x+p.w/2))/(p.w/2);
+      const speed = Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+      b.vy*=-1;
+      b.vx = offset*speed;
+      const maxSpeed=8;
+      const currSpeed = Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+      if (currSpeed>maxSpeed){
+        const factor = maxSpeed/currSpeed;
+        b.vx*=factor; b.vy*=factor;
+      }
     }
-  }
-});
+  });
 
+  // گل شدن
+  if (b.y<0) { state.scores[1]++; resetBall(); }
+  else if (b.y>GAME_HEIGHT) { state.scores[0]++; resetBall(); }
 
-  // گل شدن (وقتی توپ از بالا یا پایین خارج می‌شود)
- if (b.y < 0) {
-  state.scores[1]++;
-  resetBall();
-} else if (b.y > GAME_HEIGHT) {
-  state.scores[0]++;
-  resetBall();
-}
+  broadcast({ type:'state', state });
+}, 1000/50);
 
-
-  // ارسال وضعیت به همه
-  broadcast({ type: 'state', state });
-
-}, 1000 / 50);
-
-console.log('WebSocket server started on port', process.env.PORT || 8080);
-
-
-
-
-
-
+console.log('Server started on port', process.env.PORT || 8080);
