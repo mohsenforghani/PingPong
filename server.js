@@ -39,41 +39,58 @@ function broadcast(data){
 }
 
 // حلقه بازی
-function gameLoop(){
-  if(!gameStarted) return;
+let frameCount = 0;
+function gameLoop() {
+  if (!gameStarted) return;
 
-  let b = state.ball;
+  const b = state.ball;
   b.x += b.vx;
   b.y += b.vy;
 
-  // برخورد با دیواره‌های چپ و راست
-  if(b.x - b.radius <0 || b.x + b.radius > GAME_WIDTH) b.vx*=-1;
+  // برخورد با دیواره‌ها
+  if (b.x - b.radius < 0 || b.x + b.radius > GAME_WIDTH) b.vx *= -1;
 
   // برخورد با پدل‌ها
-  state.paddles.forEach((p,i)=>{
-    if(b.y + b.radius > p.y && b.y - b.radius < p.y + p.h &&
-       b.x + b.radius > p.x && b.x - b.radius < p.x + p.w){
-      const offset = (b.x - (p.x + p.w/2)) / (p.w/2);
-      const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
+  for (let i = 0; i < 2; i++) {
+    const p = state.paddles[i];
+    if (
+      b.y + b.radius > p.y &&
+      b.y - b.radius < p.y + p.h &&
+      b.x + b.radius > p.x &&
+      b.x - b.radius < p.x + p.w
+    ) {
+      const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
+      const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
       b.vy *= -1;
       b.vx = offset * speed;
       const maxSpeed = 8;
-      const currentSpeed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
-      if(currentSpeed>maxSpeed){
-        const factor = maxSpeed/currentSpeed;
-        b.vx *= factor; b.vy *= factor;
+      const currentSpeed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      if (currentSpeed > maxSpeed) {
+        const factor = maxSpeed / currentSpeed;
+        b.vx *= factor;
+        b.vy *= factor;
       }
     }
-  });
+  }
 
   // گل شدن
-  if(b.y < 0){ state.scores[1]++; resetBall(); }
-  if(b.y > GAME_HEIGHT){ state.scores[0]++; resetBall(); }
+  if (b.y < 0) { state.scores[1]++; resetBall(); }
+  if (b.y > GAME_HEIGHT) { state.scores[0]++; resetBall(); }
 
-  broadcast({type:'state', state});
+  // فقط هر 3 فریم (حدود 20fps) وضعیت ارسال شود
+  if (++frameCount % 3 === 0) {
+    broadcast({
+      type: 'state',
+      state: {
+        ball: { x: b.x, y: b.y, radius: b.radius },
+        paddles: state.paddles,
+        scores: state.scores
+      }
+    });
+  }
 }
+setInterval(gameLoop, 1000 / 60);
 
-setInterval(gameLoop, 1000/60);
 
 // اتصال بازیکن
 wss.on('connection', ws=>{
@@ -160,3 +177,4 @@ wss.on('connection', ws=>{
 });
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
