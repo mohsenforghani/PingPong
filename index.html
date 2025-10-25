@@ -50,29 +50,34 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// اتصال به WebSocket
+// اتصال به WebSocket Render
 const ws = new WebSocket('wss://pingpong-te0t.onrender.com');
+
 let playerId = null;
 let gameStarted = false;
 let gameState = null;
 
-// دریافت پیام از سرور
+// دریافت پیام‌ها از سرور
 ws.onmessage = (msg) => {
   const data = JSON.parse(msg.data);
+
   if (data.type === 'assign') {
     playerId = data.playerId;
-    if (playerId === 0) {
-      btn.textContent = "در انتظار بازیکن دوم...";
-    } else {
-      btn.textContent = "شروع بازی";
-      btn.disabled = false;
-    }
+    btn.textContent = (playerId === 0) ? "در انتظار بازیکن دوم..." : "شروع بازی";
+    btn.disabled = (playerId === 0);
   }
+
+  if (data.type === 'start') {
+    gameStarted = true;
+    btn.style.display = 'none';
+  }
+
   if (data.type === 'state') {
     gameState = data.state;
   }
+
   if (data.type === 'full') {
-    alert("بازی پر است، بعداً تلاش کن!");
+    alert("بازی پر است، لطفاً بعداً امتحان کنید!");
   }
 };
 
@@ -80,14 +85,12 @@ ws.onmessage = (msg) => {
 btn.onclick = () => {
   if (playerId === 1) {
     ws.send(JSON.stringify({ type: 'start' }));
-    gameStarted = true;
-    btn.style.display = 'none';
   }
 };
 
-// ارسال موقعیت راکت به سرور
+// ارسال موقعیت راکت
 function sendPaddle(y) {
-  if (playerId === null) return;
+  if (playerId === null || !gameStarted) return;
   ws.send(JSON.stringify({ type: 'paddle', player: playerId, y }));
 }
 
@@ -114,8 +117,8 @@ function draw() {
   const scaleY = canvas.height / 600;
 
   // توپ
-  ctx.fillStyle = "white";
   const b = gameState.ball;
+  ctx.fillStyle = "white";
   ctx.beginPath();
   ctx.arc(b.x * scaleX, b.y * scaleY, b.radius * scaleX, 0, Math.PI * 2);
   ctx.fill();
@@ -128,7 +131,8 @@ function draw() {
 
   // امتیاز
   ctx.font = `${24 * scaleY}px Arial`;
-  ctx.fillText(`${gameState.scores[0]}  -  ${gameState.scores[1]}`, canvas.width/2 - 40, 50);
+  ctx.textAlign = "center";
+  ctx.fillText(`${gameState.scores[0]}  -  ${gameState.scores[1]}`, canvas.width / 2, 50);
 
   requestAnimationFrame(draw);
 }
