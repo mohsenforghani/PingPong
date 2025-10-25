@@ -61,7 +61,10 @@ let playerId = null;
 let waitingPlayerId = null;
 let gameStarted = false;
 let gameState = null;
-
+let lastScores = null;
+let lastSentXLogical = null;
+const PADDLE_SEND_DELTA = 3; // اگر مقدار منطقی x بیش از 3 تغییر کرد، ارسال شود 
+  
 /* ====== اندازه کانواس ====== */
 function resizeCanvas(){
   canvas.width = window.innerWidth;
@@ -158,9 +161,13 @@ function connectWS(){
 
       case 'state':
         gameState = data.state;
-        console.log('paddles from server:', gameState.paddles);
-        // نمایش امتیاز
-        scoreBox.innerHTML = `<span style="font-size:${Math.max(16, 24 * (canvas.width/800))}px">${gameState.scores[0]} &nbsp; - &nbsp; ${gameState.scores[1]}</span>`;
+         if (!lastScores || lastScores[0] !== gameState.scores[0] || lastScores[1] !== gameState.scores[1]) {
+         lastScores = [...gameState.scores];
+         scoreBox.innerHTML = `<span style="font-size:${Math.max(16, 24 * (canvas.width/LOGICAL_W))}px">${gameState.scores[0]} &nbsp; - &nbsp; ${gameState.scores[1]}</span>`;
+        }
+      
+       
+        
         break;
 
       case 'full':
@@ -226,16 +233,21 @@ function sendPaddleXByClientX(clientX) {
   if (!ws || ws.readyState !== WebSocket.OPEN || playerId === null || !gameStarted) return;
   const now = Date.now();
   if (now - lastSent < SEND_INTERVAL) return;
-  lastSent = now;
 
-  // مرکز پدل زیر انگشت قرار می‌گیرد:
   const paddleW = gameState ? gameState.paddles[playerId].w : 100;
   let logicalCenterX = clientToLogicalX(clientX);
   let left = logicalCenterX - paddleW / 2;
   left = Math.max(0, Math.min(LOGICAL_W - paddleW, left));
 
+  // آستانه: اگر خیلی به مقدار قبلی نزدیک است ارسال نکن
+  if (lastSentXLogical !== null && Math.abs(lastSentXLogical - left) < PADDLE_SEND_DELTA) return;
+
+  lastSent = now;
+  lastSentXLogical = left;
+
   ws.send(JSON.stringify({ type: 'paddle', player: playerId, x: left }));
 }
+
 
 /* موس و لمس */
 document.addEventListener('mousemove', (e) => {
@@ -279,9 +291,8 @@ function draw() {
     // پدل‌ها (ترسیم مستقیم از state)
     ctx.fillStyle = 'white';
     gameState.paddles.forEach(p => {
-    //ctx.fillRect(p.x * scaleX, p.y * scaleY, p.w * scaleX, p.h * scaleY);
-    ctx.fillRect(offsetX + p.x * scale, offsetY + p.y * scale, p.w * scale, p.h * scale);
-       scoreBox.innerHTML = `<span style="font-size:${Math.max(16, 24 * (canvas.width/LOGICAL_W))}px">${gameState.scores[0]} &nbsp; - &nbsp; ${gameState.scores[1]}</span>`;
+  
+      ctx.fillRect(offsetX + p.x * scale, offsetY + p.y * scale, p.w * scale, p.h * scale);
     });
   } else {
     // اگر state هنوز نیامده، یک نوار لودینگ ساده رسم کن
@@ -295,5 +306,6 @@ requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
