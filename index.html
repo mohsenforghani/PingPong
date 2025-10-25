@@ -274,59 +274,49 @@ document.addEventListener('touchmove', (e) => {
 /* ====== رسم بازی (توپ و پدل‌ها) ====== */
 
 
+// داخل draw()
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // پس‌زمینه
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle='#000';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
 
-  const scaleX = canvas.width / LOGICAL_W;
-  const scaleY = canvas.height / LOGICAL_H;
+  const scale = Math.min(canvas.width/LOGICAL_W, canvas.height/LOGICAL_H);
+  const offsetX = (canvas.width-LOGICAL_W*scale)/2;
+  const offsetY = (canvas.height-LOGICAL_H*scale)/2;
 
-  if (gameState) {
-    const b = gameState.ball;
-
-    // ======= توپ =======
-    renderBall.x += (b.x - renderBall.x) * 0.2;
-    renderBall.y += (b.y - renderBall.y) * 0.2;
-
-    ctx.fillStyle = 'white';
+  if (gameState){
+    // توپ
+    renderBall.x += (gameState.ball.x - renderBall.x)*0.2;
+    renderBall.y += (gameState.ball.y - renderBall.y)*0.2;
+    ctx.fillStyle='white';
     ctx.beginPath();
-    ctx.arc(renderBall.x * scaleX, renderBall.y * scaleY, Math.max(2, b.radius * scaleX), 0, Math.PI * 2);
+    ctx.arc(offsetX+renderBall.x*scale, offsetY+renderBall.y*scale, Math.max(2,gameState.ball.radius*scale),0,Math.PI*2);
     ctx.fill();
 
-    // ======= پدل‌ها =======
-    ctx.fillStyle = 'white';
-    gameState.paddles.forEach((p, i) => {
-      // Y ثابت برای فاصله ۱۰px از بالا و پایین
-      renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.2;
-
-      if (i === 0) renderPaddles[i].y = 10; // پدل بالا
-      else renderPaddles[i].y = LOGICAL_H - p.h - 10; // پدل پایین
-
-      ctx.fillRect(
-        renderPaddles[i].x * scaleX,
-        renderPaddles[i].y * scaleY,
-        p.w * scaleX,
-        p.h * scaleY
-      );
+    // پدل‌ها
+    ctx.fillStyle='white';
+    gameState.paddles.forEach((p,i)=>{
+      renderPaddles[i].x += (p.x - renderPaddles[i].x)*0.2;
+      renderPaddles[i].y = p.y; // y ثابت
+      ctx.fillRect(offsetX+renderPaddles[i].x*scale, offsetY+renderPaddles[i].y*scale, p.w*scale, p.h*scale);
     });
-
   } else {
-    // نوار لودینگ ساده
-    ctx.fillStyle = '#222';
-    ctx.fillRect(canvas.width / 2 - 80, canvas.height / 2 - 6, 160, 12);
+    // نوار لودینگ
+    ctx.fillStyle='#222';
+    ctx.fillRect(canvas.width/2-80, canvas.height/2-6, 160,12);
   }
 
   requestAnimationFrame(draw);
 }
+
 
   
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
 
