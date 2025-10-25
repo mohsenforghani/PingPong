@@ -3,122 +3,152 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Ping Pong آنلاین</title>
+<title>پینگ‌پونگ آنلاین</title>
 <style>
-html, body {margin:0; padding:0; height:100%; background:#000; color:#fff; overflow:hidden; font-family:tahoma;}
-#gameCanvas{display:block; width:100%; height:100vh; background:#000; touch-action:none;}
-#scoreBox{position:absolute; top:10px; width:100%; text-align:center; font-size:24px;}
-#statusText{position:absolute; bottom:10px; width:100%; text-align:center; font-size:16px;}
+html,body{margin:0;padding:0;background:#000;color:#fff;overflow:hidden;font-family:tahoma;}
+#gameCanvas{display:block;width:100%;height:100vh;background:#000;}
+#scoreBox{position:absolute;top:10px;width:100%;text-align:center;font-size:24px;}
+#statusText{position:absolute;bottom:20px;width:100%;text-align:center;font-size:16px;}
+#menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+button{background:#222;color:#fff;border:1px solid #666;padding:10px 20px;margin:5px;font-size:18px;border-radius:8px;}
 </style>
 </head>
 <body>
 <canvas id="gameCanvas"></canvas>
 <div id="scoreBox"></div>
 <div id="statusText"></div>
+
+<div id="menu">
+  <button id="waitBtn">منتظر حریف بمان</button>
+  <button id="acceptBtn" style="display:none;">پذیرش بازی</button>
+  <button id="declineBtn" style="display:none;">رد کردن</button>
+</div>
+
 <script>
-const WS_URL='wss://pingpong-te0t.onrender.com'; // آدرس WebSocket
-const LOGICAL_W=450;
-const LOGICAL_H=800;
+const WS_URL = "wss://pingpong-te0t.onrender.com"; // سرور خودت را بگذار
+const LOGICAL_W = 450, LOGICAL_H = 800;
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const scoreBox = document.getElementById("scoreBox");
+const statusText = document.getElementById("statusText");
 
-const canvas=document.getElementById('gameCanvas');
-const ctx=canvas.getContext('2d');
-const scoreBox=document.getElementById('scoreBox');
-const statusText=document.getElementById('statusText');
+const menu = document.getElementById("menu");
+const waitBtn = document.getElementById("waitBtn");
+const acceptBtn = document.getElementById("acceptBtn");
+const declineBtn = document.getElementById("declineBtn");
 
-let ws=null;
-let playerId=null;
-let gameStarted=false;
-let gameState=null;
-
-// رندر توپ و پدل‌ها
-let renderBall={x:LOGICAL_W/2, y:LOGICAL_H/2};
-let renderPaddles=[
-  {x:LOGICAL_W/2-50, y:10},
-  {x:LOGICAL_W/2-50, y:LOGICAL_H-30}
+let ws, playerId = null, gameStarted = false, gameState = null;
+let renderBall = { x: LOGICAL_W / 2, y: LOGICAL_H / 2 };
+let renderPaddles = [
+  { x: LOGICAL_W / 2 - 50, y: 10 },
+  { x: LOGICAL_W / 2 - 50, y: LOGICAL_H - 30 }
 ];
 
-// تنظیم اندازه صفحه
-function resizeCanvas(){
+// تمام‌صفحه
+function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
   canvas.width = window.innerWidth * ratio;
   canvas.height = window.innerHeight * ratio;
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.scale(ratio, ratio);
 }
-window.addEventListener('resize',resizeCanvas);
+window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-// اتصال WebSocket
-function connectWS(){
-  ws=new WebSocket(WS_URL);
-  ws.onopen=()=>{statusText.textContent='متصل شد به سرور...'; ws.send(JSON.stringify({type:'checkWaiting'}));};
-  ws.onmessage=(evt)=>{
-    let data;
-    try{data=JSON.parse(evt.data);}catch(e){return;}
-    switch(data.type){
-      case 'assign':
-        playerId=data.playerId;
-        statusText.textContent=`شما بازیکن ${playerId} هستید`;
+// اتصال به سرور
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => { statusText.textContent = "به سرور متصل شد"; };
+  ws.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    switch(data.type) {
+      case "assign":
+        playerId = data.playerId;
+        statusText.textContent = `شما بازیکن ${playerId + 1} هستید`;
         break;
-      case 'start':
-        gameStarted=true;
-        statusText.textContent='بازی شروع شد';
+      case "waiting_for_opponent":
+        menu.style.display = "block";
+        waitBtn.style.display = "none";
+        acceptBtn.style.display = "none";
+        declineBtn.style.display = "none";
+        statusText.textContent = "در انتظار حریف...";
         break;
-      case 'state':
-        gameState=data.state;
-        scoreBox.textContent=`${gameState.scores[0]} - ${gameState.scores[1]}`;
+      case "opponent_waiting":
+        statusText.textContent = "یک بازیکن منتظر است، می‌خواهی بپیوندی؟";
+        menu.style.display = "block";
+        waitBtn.style.display = "none";
+        acceptBtn.style.display = "inline-block";
+        declineBtn.style.display = "inline-block";
         break;
-      case 'full':
-        alert('بازی پر است');
+      case "declined":
+        statusText.textContent = "حریف بازی را رد کرد";
+        menu.style.display = "block";
+        waitBtn.style.display = "inline-block";
+        acceptBtn.style.display = "none";
+        declineBtn.style.display = "none";
         break;
-      default: console.log('unknown',data);
+      case "start":
+        gameStarted = true;
+        menu.style.display = "none";
+        statusText.textContent = "بازی شروع شد!";
+        break;
+      case "state":
+        gameState = data.state;
+        scoreBox.textContent = `${gameState.scores[0]} - ${gameState.scores[1]}`;
+        break;
     }
   };
-  ws.onclose=()=>{statusText.textContent='ارتباط قطع شد'; setTimeout(connectWS,1000);};
+  ws.onclose = () => {
+    statusText.textContent = "ارتباط قطع شد، در حال اتصال مجدد...";
+    setTimeout(connectWS, 1000);
+  };
 }
 connectWS();
 
+// کنترل‌ها
+waitBtn.onclick = () => ws.send(JSON.stringify({ type: "waitForPlayer" }));
+acceptBtn.onclick = () => ws.send(JSON.stringify({ type: "acceptMatch" }));
+declineBtn.onclick = () => ws.send(JSON.stringify({ type: "declineMatch" }));
+
 // ارسال موقعیت پدل
-function sendPaddle(clientX){
-  if(!gameStarted || !ws || ws.readyState!==WebSocket.OPEN) return;
-  const scale=canvas.width/LOGICAL_W;
-  const offsetX=(canvas.width - LOGICAL_W*scale)/2;
-  let logicalX=(clientX - offsetX);
-  logicalX=Math.max(0, Math.min(LOGICAL_W-100, logicalX-50));
-  ws.send(JSON.stringify({type:'paddle', player:playerId, x:logicalX}));
-}
 let lastSend = 0;
-function sendPaddleThrottled(clientX) {
+function sendPaddle(x) {
+  if (!gameStarted || !ws || ws.readyState !== WebSocket.OPEN) return;
+  const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
+  const offsetX = (canvas.width / scale - LOGICAL_W) / 2;
+  let logicalX = (x / scale) - offsetX - 50;
+  logicalX = Math.max(0, Math.min(LOGICAL_W - 100, logicalX));
   const now = Date.now();
-  if (now - lastSend < 50) return; // هر 50ms یکبار
-  lastSend = now;
-  sendPaddle(clientX);
+  if (now - lastSend > 50) {
+    lastSend = now;
+    ws.send(JSON.stringify({ type: "paddle", player: playerId, x: logicalX }));
+  }
 }
-// کنترل موس و لمس
-document.addEventListener('mousemove', e=>sendPaddleThrottled(e.clientX));
-document.addEventListener('touchmove', e=>{ e.preventDefault(); sendPaddleThrottled(e.touches[0].clientX); }, {passive:false});
 
-// رسم بازی
-function draw(){
+document.addEventListener("mousemove", e => sendPaddle(e.clientX));
+document.addEventListener("touchmove", e => { e.preventDefault(); sendPaddle(e.touches[0].clientX); }, { passive:false });
+
+// رندر بازی
+function draw() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(gameState){
+  if (gameState) {
     const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
-    const offsetX=(canvas.width - LOGICAL_W*scale)/2;
-    const offsetY=(canvas.height - LOGICAL_H*scale)/2;
+    const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
+    const offsetY = (canvas.height - LOGICAL_H * scale) / 2;
 
-    // توپ با حرکت نرم
-    const smoothing = 0.1 + Math.min(0.4, latency / 200); // اگر latency زیاد شد، نرم‌تر کن
-renderBall.x += (gameState.ball.x - renderBall.x) * smoothing;
-renderBall.y += (gameState.ball.y - renderBall.y) * smoothing;
-    ctx.fillStyle='white';
+    // توپ
+    renderBall.x += (gameState.ball.x - renderBall.x) * 0.2;
+    renderBall.y += (gameState.ball.y - renderBall.y) * 0.2;
+    ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(offsetX + renderBall.x*scale, offsetY + renderBall.y*scale, Math.max(2, gameState.ball.radius*scale), 0, Math.PI*2);
+    ctx.arc(offsetX + renderBall.x * scale, offsetY + renderBall.y * scale, gameState.ball.radius * scale, 0, Math.PI * 2);
     ctx.fill();
 
-    // پدل‌ها با حرکت نرم
-    gameState.paddles.forEach((p,i)=>{
-      renderPaddles[i].x += (p.x - renderPaddles[i].x)*0.2;
+    // پدل‌ها
+    gameState.paddles.forEach((p, i) => {
+      renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.3;
       renderPaddles[i].y = p.y;
-      ctx.fillRect(offsetX + renderPaddles[i].x*scale, offsetY + renderPaddles[i].y*scale, p.w*scale, p.h*scale);
+      ctx.fillRect(offsetX + renderPaddles[i].x * scale, offsetY + renderPaddles[i].y * scale, p.w * scale, p.h * scale);
     });
   }
   requestAnimationFrame(draw);
@@ -127,4 +157,3 @@ draw();
 </script>
 </body>
 </html>
-
