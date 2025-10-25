@@ -42,12 +42,15 @@ function resetGame() {
 }
 
 function broadcast(data) {
+  // stringify once (به جای stringify داخل حلقه)
+  const payload = JSON.stringify(data);
   players.forEach(p => {
     if (p && p.readyState === WebSocket.OPEN) {
-      p.send(JSON.stringify(data));
+      p.send(payload);
     }
   });
 }
+
 
 wss.on('connection', ws => {
   // پیدا کردن یک اسلات خالی
@@ -238,8 +241,9 @@ setInterval(() => {
   // ارسال وضعیت به همه
   broadcast({ type: 'state', state });
 
-}, 1000 / 60);
+}, 1000 / 30);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
 
 
