@@ -2,7 +2,7 @@
 const WebSocket = require('ws');
 const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
 const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
+const GAME_HEIGHT = 450;
 
 /*
   players: آرایه‌ی دو عنصری نگه‌دارنده‌ی socket های بازیکنان
@@ -25,6 +25,12 @@ let state = {
 function resetBall() {
   state.paddles[0].w = state.paddles[1].w = 100;
   state.paddles[0].h = state.paddles[1].h = 20;
+  // بازیکن بالا
+  state.paddles[0].y = 30;
+
+  // بازیکن پایین
+  state.paddles[1].y = GAME_HEIGHT - 30 - state.paddles[1].h;
+  
   state.ball.x = GAME_WIDTH / 2;
   state.ball.y = GAME_HEIGHT / 2;
   state.ball.vx = (Math.random() - 0.5) * 6;
@@ -244,6 +250,7 @@ setInterval(() => {
 }, 1000 / 50);
 
 console.log('WebSocket server started on port', process.env.PORT || 8080);
+
 
 
 
