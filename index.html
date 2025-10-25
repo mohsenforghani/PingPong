@@ -281,29 +281,36 @@ function draw() {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const scale = Math.min(canvas.width / LOGICAL_W, canvas.height / LOGICAL_H);
-  const offsetX = (canvas.width - LOGICAL_W * scale) / 2;
-  const offsetY = (canvas.height - LOGICAL_H * scale) / 2;
+  const scaleX = canvas.width / LOGICAL_W;
+  const scaleY = canvas.height / LOGICAL_H;
 
   if (gameState) {
+    const b = gameState.ball;
+
     // ======= توپ =======
-    // حرکت توپ را به آرامی به موقعیت واقعی نزدیک کن
-    renderBall.x += (gameState.ball.x - renderBall.x) * 0.2; 
-    renderBall.y += (gameState.ball.y - renderBall.y) * 0.2;
+    renderBall.x += (b.x - renderBall.x) * 0.2;
+    renderBall.y += (b.y - renderBall.y) * 0.2;
 
     ctx.fillStyle = 'white';
     ctx.beginPath();
-    ctx.arc(offsetX + renderBall.x * scale, offsetY + renderBall.y * scale, Math.max(2, gameState.ball.radius * scale), 0, Math.PI * 2);
+    ctx.arc(renderBall.x * scaleX, renderBall.y * scaleY, Math.max(2, b.radius * scaleX), 0, Math.PI * 2);
     ctx.fill();
 
     // ======= پدل‌ها =======
     ctx.fillStyle = 'white';
     gameState.paddles.forEach((p, i) => {
-      // حرکت پدل‌ها را نرم کن
+      // Y ثابت برای فاصله ۱۰px از بالا و پایین
       renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.2;
-      renderPaddles[i].y = p.y; // Y ثابت است
 
-      ctx.fillRect(offsetX + renderPaddles[i].x * scale, offsetY + renderPaddles[i].y * scale, p.w * scale, p.h * scale);
+      if (i === 0) renderPaddles[i].y = 10; // پدل بالا
+      else renderPaddles[i].y = LOGICAL_H - p.h - 10; // پدل پایین
+
+      ctx.fillRect(
+        renderPaddles[i].x * scaleX,
+        renderPaddles[i].y * scaleY,
+        p.w * scaleX,
+        p.h * scaleY
+      );
     });
 
   } else {
@@ -314,11 +321,13 @@ function draw() {
 
   requestAnimationFrame(draw);
 }
+
   
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
 
 
