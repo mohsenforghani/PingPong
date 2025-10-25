@@ -1,11 +1,17 @@
 {
-  "name": "pong-game-server",
+  "name": "pingpong-online",
   "version": "1.0.0",
+  "description": "A simple real-time two-player ping pong game using WebSocket.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.13.0"
-  }
+    "ws": "^8.17.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Mohsen Forghani",
+  "license": "MIT"
 }
