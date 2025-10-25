@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
 <title>پینگ‌پونگ آنلاین</title>
 <style>
-  html,body{height:100%;margin:0;padding:0;background:#000;color:#fff;font-family:tahoma;overflow:hidden;}
-  #gameCanvas{display:block;width:100%;height:100vh;background:#000;touch-action:none;}
-  #scoreBox{position:absolute;top:10px;width:100%;text-align:center;font-size:24px;pointer-events:none;}
-  #statusText{position:absolute;bottom:20px;width:100%;text-align:center;font-size:16px;}
-  #menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
-  button{background:#222;color:#fff;border:1px solid #666;padding:10px 18px;margin:6px;font-size:18px;border-radius:8px;}
+html,body{height:100%;margin:0;padding:0;background:#000;color:#fff;font-family:tahoma;overflow:hidden;}
+#gameCanvas{display:block;width:100%;height:100vh;background:#000;touch-action:none;}
+#scoreBox{position:absolute;top:10px;width:100%;text-align:center;font-size:24px;pointer-events:none;}
+#statusText{position:absolute;bottom:20px;width:100%;text-align:center;font-size:16px;}
+#menu{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+button{background:#222;color:#fff;border:1px solid #666;padding:10px 18px;margin:6px;font-size:18px;border-radius:8px;}
 </style>
 </head>
 <body>
@@ -26,7 +26,7 @@
 
 <script>
 /* CONFIG */
-const WS_URL = "wss://pingpong-te0t.onrender.com"; // آدرس سرورت رو اینجا بذار
+const WS_URL = "wss://pingpong-te0t.onrender.com"; 
 const LOGICAL_W = 450, LOGICAL_H = 800;
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -45,226 +45,164 @@ let gameState = null;
 let renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
 let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y: LOGICAL_H-30 }];
 
-// resize & DPR-safe
+// resize
 function resizeCanvas() {
     const ratio = window.devicePixelRatio || 1;
-
-    // اندازه واقعی صفحه
     const screenW = window.innerWidth;
     const screenH = window.innerHeight;
-
-    // نسبت منطقی بازی
     const gameRatio = LOGICAL_W / LOGICAL_H;
     const screenRatio = screenW / screenH;
-
     let renderW, renderH;
-
-    if (screenRatio > gameRatio) {
-        // صفحه عریض‌تر: ارتفاع محدود، عرض افزایش می‌یابد
-        renderH = screenH;
-        renderW = renderH * gameRatio;
-    } else {
-        // صفحه بلندتر یا هم‌اندازه: عرض محدود، ارتفاع افزایش می‌یابد
-        renderW = screenW;
-        renderH = renderW / gameRatio;
-    }
-
+    if (screenRatio > gameRatio) { renderH = screenH; renderW = renderH * gameRatio; }
+    else { renderW = screenW; renderH = renderW / gameRatio; }
     canvas.width = renderW * ratio;
     canvas.height = renderH * ratio;
     canvas.style.width = renderW + 'px';
     canvas.style.height = renderH + 'px';
-
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0); // تنظیم scale برای retina
+    ctx.setTransform(ratio,0,0,ratio,0,0);
 }
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-
-// WebSocket connect & handlers
+// WebSocket connect
 function connectWS(){
-  ws = new WebSocket(WS_URL);
-  ws.onopen = ()=> {
-    statusText.textContent = "متصل به سرور";
-    // بلافاصله وضعیت لابی را بپرس
-    ws.send(JSON.stringify({ type: "checkWaiting" }));
-  };
-  ws.onmessage = (e)=>{
-    let data;
-    try { data = JSON.parse(e.data); } catch { return; }
-    switch(data.type){
-      case "assign":
-        playerId = data.playerId;
-        statusText.textContent = `شما بازیکن ${playerId + 1} هستید`;
-        break;
-      case "no_waiting":
-        menu.style.display = "block";
-        wantBtn.style.display = "inline-block";
-        startBtn.style.display = "none";
-        cancelBtn.style.display = "none";
-        statusText.textContent = "هیچ بازیکنی منتظر نیست";
-        break;
-      case "waiting_for_opponent":
-        // شما کسی را به انتظار گذاشته‌اید
-        menu.style.display = "block";
-        wantBtn.style.display = "none";
-        startBtn.style.display = "none";
-        cancelBtn.style.display = "inline-block";
-        statusText.textContent = "شما در صف انتظار هستید — منتظر بمانید یا لغو کنید";
-        break;
-      case "show_start":
-        // شخص دیگری منتظر است -> به شما دکمه شروع نمایش داده شود
-        menu.style.display = "block";
-        wantBtn.style.display = "none";
-        startBtn.style.display = "inline-block";
-        cancelBtn.style.display = "none";
-        statusText.textContent = "یک بازیکن منتظر است — می‌توانید بازی را شروع کنید";
-        break;
-      case "declined":
-        // اگر منتظر کننده لغو کرد
-        menu.style.display = "block";
-        wantBtn.style.display = "inline-block";
-        startBtn.style.display = "none";
-        cancelBtn.style.display = "none";
-        statusText.textContent = "منتظر کننده لغو کرد";
-        break;
-      case "start":
-        // بازی شروع شد
-        gameStarted = true;
-        menu.style.display = "none";
-        statusText.textContent = "بازی شروع شد";
-        break;
-      case "state":
-        gameState = data.state;
-        scoreBox.textContent = `${gameState.scores[0]} - ${gameState.scores[1]}`;
-        break;
-      case "full":
-        alert("سرور ظرفیت دارد — بعدا تلاش کنید");
-        break;
-    }
-  };
-  ws.onclose = ()=>{
-    statusText.textContent = "ارتباط قطع شد — تلاش برای اتصال مجدد...";
-    setTimeout(connectWS, 1000);
-  };
+    ws = new WebSocket(WS_URL);
+    ws.onopen = ()=>{
+        statusText.textContent = "متصل به سرور";
+        ws.send(JSON.stringify({ type: "checkWaiting" }));
+    };
+    ws.onmessage = (e)=>{
+        let data;
+        try { data = JSON.parse(e.data); } catch { return; }
+        switch(data.type){
+            case "assign":
+                playerId = data.playerId;
+                statusText.textContent = `شما بازیکن ${playerId + 1} هستید`;
+                break;
+            case "no_waiting":
+                wantBtn.style.display="inline-block";
+                startBtn.style.display="none";
+                cancelBtn.style.display="none";
+                statusText.textContent = "هیچ بازیکنی منتظر نیست";
+                break;
+            case "waiting_for_opponent":
+                wantBtn.style.display="none";
+                startBtn.style.display="none";
+                cancelBtn.style.display="inline-block";
+                statusText.textContent = "شما در صف انتظار هستید";
+                break;
+            case "show_start":
+                wantBtn.style.display="none";
+                startBtn.style.display="inline-block";
+                cancelBtn.style.display="none";
+                statusText.textContent = "یک بازیکن منتظر است — می‌توانید بازی را شروع کنید";
+                break;
+            case "start":
+                gameStarted = true;
+                menu.style.display="none";
+                statusText.textContent = "بازی شروع شد";
+                break;
+            case "state":
+                gameState = data.state;
+                scoreBox.textContent = `${gameState.scores[0]} - ${gameState.scores[1]}`;
+                break;
+            case "full":
+                alert("سرور ظرفیت دارد — بعدا تلاش کنید");
+                break;
+            case "declined":
+                wantBtn.style.display="inline-block";
+                startBtn.style.display="none";
+                cancelBtn.style.display="none";
+                statusText.textContent="منتظر کننده لغو کرد";
+                break;
+        }
+    };
+    ws.onclose = ()=>{ statusText.textContent="ارتباط قطع شد — تلاش مجدد..."; setTimeout(connectWS,1000); };
 }
 connectWS();
 
-// UI actions
-wantBtn.onclick = ()=> {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "waitForPlayer" }));
-  // وضعیت واقعی از سرور خواهد آمد (waiting_for_opponent)
+// دکمه‌ها
+wantBtn.onclick = ()=>{
+    if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({ type: "waitForPlayer" }));
 };
-startBtn.onclick = ()=> {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "acceptMatch" }));
+startBtn.onclick = ()=>{
+    if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({ type: "acceptMatch" }));
 };
-cancelBtn.onclick = ()=> {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: "cancelWait" }));
+cancelBtn.onclick = ()=>{
+    if(ws && ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({ type: "cancelWait" }));
 };
 
-// ارسال موقعیت پدل با throttle
+// ارسال پدل
 let lastSend = 0;
 function sendPaddleClient(clientX){
-  if (!gameStarted || !ws || ws.readyState !== WebSocket.OPEN) return;
-  const ratio = window.devicePixelRatio || 1;
-  const displayW = canvas.width / ratio;
-  const displayH = canvas.height / ratio;
-  const scale = Math.min(displayW / LOGICAL_W, displayH / LOGICAL_H);
-  const offsetX = (displayW - LOGICAL_W*scale)/2;
-  // clientX به CSS pixel است (مثلا e.clientX)
-  let logicalX = (clientX - offsetX)/scale - 50;
-  logicalX = Math.max(0, Math.min(LOGICAL_W - 100, logicalX));
-  const now = Date.now();
-  if (now - lastSend < 50) return;
-  lastSend = now;
-  ws.send(JSON.stringify({ type: "paddle", x: logicalX })); // سرور از ws.playerId استفاده می‌کند
+    if(!gameStarted || !ws || ws.readyState!==WebSocket.OPEN) return;
+    const ratio = window.devicePixelRatio||1;
+    const displayW = canvas.width/ratio;
+    const displayH = canvas.height/ratio;
+    const scale = Math.min(displayW/LOGICAL_W, displayH/LOGICAL_H);
+    const offsetX = (displayW - LOGICAL_W*scale)/2;
+    let logicalX = (clientX - offsetX)/scale - 50;
+    logicalX = Math.max(0, Math.min(LOGICAL_W-100, logicalX));
+    const now = Date.now();
+    if(now - lastSend<50) return;
+    lastSend = now;
+    ws.send(JSON.stringify({ type:"paddle", x:logicalX }));
 }
 
 // رویدادها
-document.addEventListener("mousemove", e => sendPaddleClient(e.clientX));
-document.addEventListener("touchstart", e => { e.preventDefault(); sendPaddleClient(e.touches[0].clientX); }, {passive:false});
-document.addEventListener("touchmove", e => { e.preventDefault(); sendPaddleClient(e.touches[0].clientX); }, {passive:false});
+document.addEventListener("mousemove", e=>sendPaddleClient(e.clientX));
+document.addEventListener("touchstart", e=>{e.preventDefault(); sendPaddleClient(e.touches[0].clientX);},{passive:false});
+document.addEventListener("touchmove", e=>{e.preventDefault(); sendPaddleClient(e.touches[0].clientX);},{passive:false});
 
-// رندر
+// رسم
 function draw(){
     const ratio = window.devicePixelRatio || 1;
-
-    // اندازه واقعی canvas بر اساس CSS
-    const displayW = canvas.width / ratio;
-    const displayH = canvas.height / ratio;
-
-    // پاک کردن canvas
-    ctx.clearRect(0, 0, displayW, displayH);
-
-    // scaleX و scaleY جداگانه
-    const scaleX = displayW / LOGICAL_W;
-    const scaleY = displayH / LOGICAL_H;
-
-    // offset برای وسط‌چین کردن بازی
-    const offsetX = (displayW - LOGICAL_W * scaleX) / 2;
-    const offsetY = (displayH - LOGICAL_H * scaleY) / 2;
+    const displayW = canvas.width/ratio;
+    const displayH = canvas.height/ratio;
+    ctx.clearRect(0,0,displayW,displayH);
+    const scaleX = displayW/LOGICAL_W;
+    const scaleY = displayH/LOGICAL_H;
+    const offsetX = (displayW - LOGICAL_W*scaleX)/2;
+    const offsetY = (displayH - LOGICAL_H*scaleY)/2;
 
     if(gameState){
-        // smoothing توپ
         const smoothing = 0.2;
-        renderBall.x += (gameState.ball.x - renderBall.x) * smoothing;
-        renderBall.y += (gameState.ball.y - renderBall.y) * smoothing;
+        renderBall.x += (gameState.ball.x - renderBall.x)*smoothing;
+        renderBall.y += (gameState.ball.y - renderBall.y)*smoothing;
 
-        // رسم توپ
-        ctx.fillStyle = "#fff";
+        // توپ
+        ctx.fillStyle="#fff";
         ctx.beginPath();
         ctx.arc(
-            offsetX + renderBall.x * scaleX,
-            offsetY + renderBall.y * scaleY,
-            Math.max(2, gameState.ball.radius * Math.min(scaleX, scaleY)), // radius تقریباً uniform
-            0,
-            Math.PI * 2
+            offsetX + renderBall.x*scaleX,
+            offsetY + renderBall.y*scaleY,
+            Math.max(2, gameState.ball.radius * Math.min(scaleX, scaleY)),
+            0, Math.PI*2
         );
         ctx.fill();
 
-        // پدل‌ها با smoothing
-        gameState.paddles.forEach((p, i) => {
-            renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.3;
+        // پدل‌ها
+        gameState.paddles.forEach((p,i)=>{
+            renderPaddles[i].x += (p.x - renderPaddles[i].x)*0.3;
             renderPaddles[i].y = p.y;
-            ctx.fillRect(
-                offsetX + renderPaddles[i].x * scaleX,
-                offsetY + renderPaddles[i].y * scaleY,
-                p.w * scaleX,
-                p.h * scaleY
-            );
+            ctx.fillRect(offsetX + renderPaddles[i].x*scaleX, offsetY + renderPaddles[i].y*scaleY, p.w*scaleX, p.h*scaleY);
         });
 
-        // نمایش امتیاز
-        ctx.fillStyle = "#fff";
+        // امتیاز
+        ctx.fillStyle="#fff";
         ctx.font = `${Math.floor(24 * Math.min(scaleX, scaleY))}px Tahoma`;
-        ctx.textAlign = "center";
-        ctx.fillText(
-            `${gameState.scores[0]} - ${gameState.scores[1]}`,
-            displayW / 2,
-            offsetY / 2 + 20
-        );
-
+        ctx.textAlign="center";
+        ctx.fillText(`${gameState.scores[0]} - ${gameState.scores[1]}`, displayW/2, offsetY/2+20);
     } else {
-        // وقتی state آماده نیست، پیام لابی
-        ctx.fillStyle = "#fff";
+        ctx.fillStyle="#fff";
         ctx.font = `${Math.floor(18 * Math.min(scaleX, scaleY))}px Tahoma`;
-        ctx.textAlign = "center";
-        ctx.fillText(
-            "در انتظار شروع بازی... (یا روی 'می‌خواهم بازی کنم' بزنید)",
-            displayW / 2,
-            displayH / 2
-        );
+        ctx.textAlign="center";
+        ctx.fillText("در انتظار شروع بازی... (یا روی 'می‌خواهم بازی کنم' بزنید)", displayW/2, displayH/2);
     }
 
     requestAnimationFrame(draw);
 }
-
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
-
-
-
