@@ -189,44 +189,78 @@ document.addEventListener("touchmove", e => { e.preventDefault(); sendPaddleClie
 
 // رندر
 function draw(){
-  // clear using CSS-space coords (ctx is scaled to DPR)
-  const ratio = window.devicePixelRatio || 1;
-  const displayW = canvas.width / ratio;
-  const displayH = canvas.height / ratio;
-  ctx.clearRect(0,0,displayW,displayH);
+    const ratio = window.devicePixelRatio || 1;
 
-  if (gameState){
+    // اندازه واقعی canvas بر اساس CSS
+    const displayW = canvas.width / ratio;
+    const displayH = canvas.height / ratio;
+
+    // پاک کردن canvas
+    ctx.clearRect(0, 0, displayW, displayH);
+
+    // مقیاس و offset برای حفظ Aspect Ratio
     const scale = Math.min(displayW / LOGICAL_W, displayH / LOGICAL_H);
-    const offsetX = (displayW - LOGICAL_W*scale)/2;
-    const offsetY = (displayH - LOGICAL_H*scale)/2;
+    const offsetX = (displayW - LOGICAL_W * scale) / 2;
+    const offsetY = (displayH - LOGICAL_H * scale) / 2;
 
-    // توپ smoothing
-    renderBall.x += (gameState.ball.x - renderBall.x) * 0.2;
-    renderBall.y += (gameState.ball.y - renderBall.y) * 0.2;
+    if(gameState){
+        // smoothing توپ
+        const smoothing = 0.2;
+        renderBall.x += (gameState.ball.x - renderBall.x) * smoothing;
+        renderBall.y += (gameState.ball.y - renderBall.y) * smoothing;
 
-    ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    ctx.arc(offsetX + renderBall.x*scale, offsetY + renderBall.y*scale, Math.max(2, gameState.ball.radius*scale), 0, Math.PI*2);
-    ctx.fill();
+        // رسم توپ
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(
+            offsetX + renderBall.x * scale,
+            offsetY + renderBall.y * scale,
+            Math.max(2, gameState.ball.radius * scale),
+            0,
+            Math.PI * 2
+        );
+        ctx.fill();
 
-    // پدل‌ها
-    gameState.paddles.forEach((p,i)=>{
-      renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.3;
-      renderPaddles[i].y = p.y;
-      ctx.fillRect(offsetX + renderPaddles[i].x*scale, offsetY + renderPaddles[i].y*scale, p.w*scale, p.h*scale);
-    });
-  } else {
-    // نمایش پیغام وقتی state نیست
-    ctx.fillStyle = "#fff";
-    ctx.font = "18px Tahoma";
-    ctx.textAlign = "center";
-    ctx.fillText("در انتظار شروع بازی... (یا روی 'می‌خواهم بازی کنم' بزنید)", displayW/2, displayH/2);
-  }
+        // پدل‌ها با smoothing
+        gameState.paddles.forEach((p, i) => {
+            renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.3;
+            renderPaddles[i].y = p.y;
+            ctx.fillRect(
+                offsetX + renderPaddles[i].x * scale,
+                offsetY + renderPaddles[i].y * scale,
+                p.w * scale,
+                p.h * scale
+            );
+        });
 
-  requestAnimationFrame(draw);
+        // نمایش امتیاز
+        ctx.fillStyle = "#fff";
+        ctx.font = `${Math.floor(24*scale)}px Tahoma`;
+        ctx.textAlign = "center";
+        ctx.fillText(
+            `${gameState.scores[0]} - ${gameState.scores[1]}`,
+            displayW / 2,
+            offsetY / 2 + 20
+        );
+
+    } else {
+        // وقتی state آماده نیست، پیام لابی
+        ctx.fillStyle = "#fff";
+        ctx.font = `${Math.floor(18*scale)}px Tahoma`;
+        ctx.textAlign = "center";
+        ctx.fillText(
+            "در انتظار شروع بازی... (یا روی 'می‌خواهم بازی کنم' بزنید)",
+            displayW / 2,
+            displayH / 2
+        );
+    }
+
+    requestAnimationFrame(draw);
 }
+
 requestAnimationFrame(draw);
 </script>
 </body>
 </html>
+
 
