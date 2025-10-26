@@ -20,7 +20,7 @@
 
 <div id="menu">
   <button id="wantBtn">من آماده بازی هستم</button>
-  <button id="startBtn" style="display:none"> یک لازیکن آمادگی خود را اعلام کرد.بازی شروع شود</button>
+  <button id="startBtn" style="display:none">یک بازیکن آماده است. بازی شروع شود</button>
   <button id="cancelBtn" style="display:none">لغو انتظار</button>
 </div>
 
@@ -43,6 +43,7 @@ let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y:LOGICAL
 let lastSendTs = 0;
 let stateBuffer = [];
 
+// Canvas resize
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
   const screenW = window.innerWidth;
@@ -63,7 +64,7 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// convert clientX -> logicalX
+// clientX -> logical X
 function clientXToLogical(clientX) {
   const ratio = window.devicePixelRatio || 1;
   const displayW = canvas.width / ratio;
@@ -73,7 +74,7 @@ function clientXToLogical(clientX) {
   return (clientX - offsetX) / scale;
 }
 
-// WebSocket
+// WebSocket connect
 function connect() {
   if (ws) ws.close();
   ws = new WebSocket(WS_URL);
@@ -95,7 +96,6 @@ function sendPaddle(logicalX) {
   lastSendTs = now;
   const maxLeft = LOGICAL_W - 100;
   const clamped = Math.max(0, Math.min(maxLeft, logicalX));
-  // update local render for smooth movement
   if (typeof playerId === 'number') renderPaddles[playerId].x = clamped;
   send({ type: 'paddle', x: +clamped.toFixed(2) });
 }
@@ -165,7 +165,6 @@ function drawLoop() {
         // predicted paddle
         renderPaddles[i].x += (renderPaddles[i].x - renderPaddles[i].x) * 0;
       } else {
-        // smooth opponent
         renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.28;
       }
       renderPaddles[i].y = p.y;
@@ -189,6 +188,24 @@ function drawLoop() {
 }
 requestAnimationFrame(drawLoop);
 
+// Menu buttons
+document.getElementById('wantBtn').onclick = () => {
+    send({ type: 'waitForPlayer' });
+    document.getElementById('wantBtn').style.display = 'none';
+    document.getElementById('cancelBtn').style.display = 'inline-block';
+};
+
+document.getElementById('cancelBtn').onclick = () => {
+    send({ type: 'cancelWait' });
+    document.getElementById('wantBtn').style.display = 'inline-block';
+    document.getElementById('cancelBtn').style.display = 'none';
+};
+
+document.getElementById('startBtn').onclick = () => {
+    send({ type: 'acceptMatch' });
+    document.getElementById('startBtn').style.display = 'none';
+};
+
 // Handle server messages
 function onMessage(e) {
   let data;
@@ -197,6 +214,7 @@ function onMessage(e) {
 
   if (t === 'assign') playerId = data.playerId;
   if (t === 'start') gameStarted = true;
+
   if (t === 'state') {
     const s = data.state;
     const serverTs = data.meta?.ts || Date.now();
@@ -204,16 +222,27 @@ function onMessage(e) {
     while (stateBuffer.length > 10) stateBuffer.shift();
     gameState = s;
   }
+
+  if (t === 'lobby') {
+    if (data.status === 'no_waiting') {
+        document.getElementById('statusText').innerText = 'هیچ بازیکنی منتظر نیست';
+        document.getElementById('wantBtn').style.display = 'inline-block';
+        document.getElementById('cancelBtn').style.display = 'none';
+        document.getElementById('startBtn').style.display = 'none';
+    } else if (data.status === 'waiting_for_opponent') {
+        document.getElementById('statusText').innerText = 'منتظر بازیکن دیگر...';
+        document.getElementById('wantBtn').style.display = 'none';
+        document.getElementById('cancelBtn').style.display = 'inline-block';
+        document.getElementById('startBtn').style.display = 'none';
+    } else if (data.status === 'someone_waiting') {
+        document.getElementById('statusText').innerText = 'یک بازیکن منتظر است. بازی را شروع کنید.';
+        if (playerId !== null) document.getElementById('startBtn').style.display = 'inline-block';
+    }
+  }
+
   if (t === 'ping') send({ type: 'pong', ts: Date.now() });
 }
 </script>
 
 </body>
 </html>
-
-
-
-
-
-
-
