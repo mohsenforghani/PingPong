@@ -1,128 +1,212 @@
 <!DOCTYPE html>
 <html lang="fa">
 <head>
-<meta charset="UTF-8">
-<title>Ping Pong Game</title>
-<style>
-body { margin:0; background:#222; color:white; font-family:sans-serif; }
-#topBar { text-align:center; padding:5px; background:#333; }
-#canvasContainer { display:flex; justify-content:center; margin-top:10px; }
-canvas { background:#000; border:2px solid #fff; }
-#overlay {
-    position:absolute; top:0; left:0; width:100%; height:100%;
-    background:rgba(0,0,0,0.7); display:flex; justify-content:center; align-items:center;
-    flex-direction: column; font-size:20px; display:none;
-}
-button { margin:5px; padding:10px 20px; font-size:16px; cursor:pointer; }
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ping Pong Game</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #333;
+            font-family: sans-serif;
+            color: white;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background-color: #222;
+        }
+
+        .score {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 30px;
+            color: white;
+            font-weight: bold;
+        }
+
+        .playerName {
+            position: absolute;
+            color: white;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .player1Name {
+            top: 20px;
+            left: 20px;
+            color: red;
+        }
+
+        .player2Name {
+            bottom: 20px;
+            left: 20px;
+            color: blue;
+        }
+
+        .rematch-btn {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #3498db;
+            padding: 10px 20px;
+            border: none;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            display: none;
+        }
+    </style>
 </head>
 <body>
-<div id="topBar">اتاق شماره: <span id="roomNumber"></span></div>
-<div id="canvasContainer">
-    <canvas id="gameCanvas" width="450" height="800"></canvas>
+
+<canvas id="gameCanvas"></canvas>
+<div class="score">
+    <span id="score1">0</span> - <span id="score2">0</span>
 </div>
-<div id="overlay">
-    <div id="overlayText"></div>
-    <div>
-        <button id="rematchBtn">درخواست ری‌مچ</button>
-        <button id="acceptRematchBtn">قبول ری‌مچ</button>
-    </div>
-</div>
+<div class="playerName player1Name" id="player1Name"></div>
+<div class="playerName player2Name" id="player2Name"></div>
+
+<button class="rematch-btn" id="rematchBtn">ری‌مچ</button>
 
 <script>
-const urlParams = new URLSearchParams(window.location.search);
-const ROOM_ID = Number(urlParams.get('roomId')) || 0;
-const PLAYER_NAME = urlParams.get('playerName') || 'بازیکن';
-document.getElementById('roomNumber').innerText = ROOM_ID+1;
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const score1El = document.getElementById('score1');
+    const score2El = document.getElementById('score2');
+    const player1NameEl = document.getElementById('player1Name');
+    const player2NameEl = document.getElementById('player2Name');
+    const rematchBtn = document.getElementById('rematchBtn');
 
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const overlay = document.getElementById('overlay');
-const overlayText = document.getElementById('overlayText');
-const rematchBtn = document.getElementById('rematchBtn');
-const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+    let ws;
+    let ball, paddle1, paddle2;
+    let score1 = 0, score2 = 0;
+    let player1Name = '', player2Name = '';
+    let isGameOver = false;
 
-let ws, playerIndex = null, inGame=false, paddleX=200;
-let ball = {x:225, y:400, r:15};
-let paddles = [{x:200, y:20, w:100, h:20},{x:200, y:730, w:100, h:20}];
-let scores = [0,0];
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-function connect() {
-    ws = new WebSocket('wss://pingpong-te0t.onrender.com');
-    ws.onopen = () => {
-        ws.send(JSON.stringify({ type:'setName', name:PLAYER_NAME }));
-        ws.send(JSON.stringify({ type:'requestRoom', roomId:ROOM_ID }));
-    };
-    ws.onmessage = onMessage;
-    ws.onclose = () => setTimeout(connect,2000);
-}
-function onMessage(e) {
-    let data; try { data=JSON.parse(e.data); } catch{return;}
-    switch(data.type){
-        case 'start':
-            playerIndex = data.playerIndex;
-            inGame=true;
-            showOverlay(false);
-            break;
-        case 'state':
-            ball = data.state.ball;
-            paddles = data.state.paddles;
-            scores = data.state.scores;
-            break;
-        case 'gameover':
-            inGame=false;
-            overlayText.innerHTML = `بازی تمام شد<br>نتیجه: ${data.scores[0]} - ${data.scores[1]}<br>` +
-                (data.winner===playerIndex ? 'شما برنده شدید':'حریف برنده شد');
-            showOverlay(true);
-            break;
-        case 'rematchRequested':
-            overlayText.innerText = 'حریف درخواست ری‌مچ داده است. قبول می‌کنید؟';
-            acceptRematchBtn.style.display='inline-block';
-            rematchBtn.style.display='none';
-            showOverlay(true);
-            break;
-        case 'rematchAccepted':
-            overlayText.innerText='ری‌مچ پذیرفته شد — بازی شروع شد';
-            showOverlay(false);
-            break;
+    const GAME_W = canvas.width;
+    const GAME_H = canvas.height;
+    const PADDLE_WIDTH = 100;
+    const PADDLE_HEIGHT = 20;
+    const BALL_RADIUS = 15;
+    const PADDLE_SPEED = 10;
+    const BALL_SPEED = 5;
+
+    function connectWS() {
+        ws = new WebSocket(`ws://${location.host}`);
+        ws.onopen = () => { console.log('Connected to server'); };
+        ws.onmessage = e => {
+            const data = JSON.parse(e.data);
+
+            switch(data.type) {
+                case 'state':
+                    updateGameState(data.state);
+                    break;
+                case 'gameover':
+                    handleGameOver(data.scores, data.winner);
+                    break;
+                case 'rematchRequested':
+                    if(confirm('آیا مایل به شروع دوباره بازی هستید؟')) {
+                        ws.send(JSON.stringify({ type: 'rematch', roomId: data.roomId }));
+                    }
+                    break;
+                case 'rematchAccepted':
+                    startNewGame();
+                    break;
+            }
+        };
     }
-}
-function showOverlay(flag){overlay.style.display=flag?'flex':'none';}
 
-rematchBtn.onclick=()=>{ws.send(JSON.stringify({type:'rematch'})); rematchBtn.style.display='none';};
-acceptRematchBtn.onclick=()=>{ws.send(JSON.stringify({type:'acceptRematch'})); acceptRematchBtn.style.display='none';};
+    function updateGameState(state) {
+        ball = state.ball;
+        paddle1 = state.paddles[0];
+        paddle2 = state.paddles[1];
 
-canvas.addEventListener('mousemove', e=>{
-    const rect = canvas.getBoundingClientRect();
-    paddleX = e.clientX - rect.left - paddles[playerIndex].w/2;
-    ws.send(JSON.stringify({type:'paddle', x:paddleX}));
-});
+        score1 = state.scores[0];
+        score2 = state.scores[1];
 
-function gameLoop(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+        player1Name = state.player1;
+        player2Name = state.player2;
 
-    // توپ
-    ctx.fillStyle='white';
-    ctx.beginPath();
-    ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI*2);
-    ctx.fill();
+        renderGame();
+    }
 
-    // پدل‌ها
-    ctx.fillStyle='cyan';
-    ctx.fillRect(paddles[0].x, paddles[0].y, paddles[0].w, paddles[0].h);
-    ctx.fillStyle='magenta';
-    ctx.fillRect(paddles[1].x, paddles[1].y, paddles[1].w, paddles[1].h);
+    function renderGame() {
+        ctx.clearRect(0, 0, GAME_W, GAME_H);
 
-    // امتیاز
-    ctx.fillStyle='white';
-    ctx.font='20px Tahoma';
-    ctx.fillText(`امتیاز: ${scores[0]} - ${scores[1]}`,10,30);
+        // Draw paddles
+        ctx.fillStyle = 'red';
+        ctx.fillRect(paddle1.x - PADDLE_WIDTH / 2, paddle1.y, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-    requestAnimationFrame(gameLoop);
-}
+        ctx.fillStyle = 'blue';
+        ctx.fillRect(paddle2.x - PADDLE_WIDTH / 2, paddle2.y, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-connect();
-gameLoop();
+        // Draw ball
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw score
+        score1El.textContent = score1;
+        score2El.textContent = score2;
+
+        player1NameEl.textContent = player1Name;
+        player2NameEl.textContent = player2Name;
+
+        // If game is over
+        if (isGameOver) {
+            rematchBtn.style.display = 'block';
+        } else {
+            rematchBtn.style.display = 'none';
+        }
+    }
+
+    function handleGameOver(scores, winner) {
+        isGameOver = true;
+        score1 = scores[0];
+        score2 = scores[1];
+        renderGame();
+        setTimeout(() => { 
+            rematchBtn.style.display = 'block'; 
+        }, 1000);
+    }
+
+    rematchBtn.addEventListener('click', () => {
+        ws.send(JSON.stringify({ type: 'rematch', roomId: 'currentRoomId' }));
+        startNewGame();
+    });
+
+    function startNewGame() {
+        score1 = 0;
+        score2 = 0;
+        isGameOver = false;
+        rematchBtn.style.display = 'none';
+        ws.send(JSON.stringify({ type: 'start', roomId: 'currentRoomId' }));
+    }
+
+    connectWS();
+
+    // Handle paddle movement with mouse or touch
+    canvas.addEventListener('mousemove', (e) => {
+        const x = e.clientX;
+        ws.send(JSON.stringify({ type: 'paddle', x: x }));
+    });
+
+    window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    });
 </script>
+
 </body>
 </html>
