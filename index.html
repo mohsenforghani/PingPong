@@ -1,62 +1,22 @@
-<!doctype html>
-<html lang="fa">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>PingPong - Mohsen Forghani</title>
-<style>
-  html,body{height:100%;margin:0;padding:0;background:#000;color:#fff;font-family:tahoma, Arial;overflow:hidden;}
-  #gameCanvas{display:block;touch-action:none; margin:0 auto; background:#000;}
-  #scoreBox{position:absolute;top:10px;width:100%;text-align:center;font-size:24px;pointer-events:none;}
-  #statusText{position:absolute;bottom:14px;width:100%;text-align:center;font-size:14px;}
-  #menu{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:10;}
-  button{background:#222;top:60%;left:50%;color:#fff;border:1px solid #666;padding:10px 18px;margin:6px;font-size:16px;border-radius:8px;}
-</style>
-</head>
-<body>
-<canvas id="gameCanvas"></canvas>
-<div id="scoreBox"></div>
-<div id="statusText"></div>
-
-<div id="menu">
-  <button id="wantBtn">من آماده بازی هستم</button>
-  <button id="startBtn" style="display:none"> یک بازیکن آمادگی خود را اعلام کرد.بازی شروع شود</button>
-  <button id="cancelBtn" style="display:none">لغو انتظار</button>
-</div>
-
 <script>
-/* CONFIG */
-const WS_URL = 'wss://pingpong-te0t.onrender.com'; // set your server
+// CONFIG
+const WS_URL = 'wss://pingpong-te0t.onrender.com';
 const LOGICAL_W = 450, LOGICAL_H = 800;
-const INTERP_MS = 50;           // client-side interpolation delay
-const SEND_THROTTLE = 10;      // ms between paddle sends
-const RECONNECT_BASE = 500;    // reconnect backoff base ms
-const MAX_RECONNECT = 30000;
+const INTERP_MS = 50;
+const SEND_THROTTLE = 10;
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
-const menu = document.getElementById('menu');
-const wantBtn = document.getElementById('wantBtn');
-const startBtn = document.getElementById('startBtn');
-const cancelBtn = document.getElementById('cancelBtn');
-const scoreBox = document.getElementById('scoreBox');
-const statusText = document.getElementById('statusText');
 
 let ws = null;
 let playerId = null;
-let connected = false;
-let wantPlaying = false;
 let gameStarted = false;
-let gameState = null;           // last authoritative state (object)
+let gameState = null;          // authoritative state from server
 let renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
-let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y: LOGICAL_H-30 }];
-let stateBuffer = [];          // buffer of {ts, state} for interpolation
+let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y:LOGICAL_H-30 }];
 let lastSendTs = 0;
-let lastServerTs = 0;
-let reconnectDelay = RECONNECT_BASE;
-let pingInterval = null;
+let stateBuffer = [];
 
-// --- resizing (DPR & aspect)
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
   const screenW = window.innerWidth;
@@ -77,7 +37,7 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// convert client (CSS px) -> logical coords
+// convert clientX -> logicalX
 function clientXToLogical(clientX) {
   const ratio = window.devicePixelRatio || 1;
   const displayW = canvas.width / ratio;
@@ -87,253 +47,99 @@ function clientXToLogical(clientX) {
   return (clientX - offsetX) / scale;
 }
 
-// connect with auto-reconnect
+// WebSocket
 function connect() {
-  if (ws) try { ws.close(); } catch(e){}
+  if (ws) ws.close();
   ws = new WebSocket(WS_URL);
-  ws.addEventListener('open', onOpen);
-  ws.addEventListener('message', onMessage);
-  ws.addEventListener('close', onClose);
-  ws.addEventListener('error', onError);
+  ws.onopen = () => console.log('Connected');
+  ws.onmessage = onMessage;
+  ws.onclose = () => setTimeout(connect, 1000);
 }
-// open handler
-function onOpen() {
-  connected = true;
-  reconnectDelay = RECONNECT_BASE;
-  statusText.textContent = 'متصل به سرور';
-  // ask lobby status
-  send({ type: 'check' });
-  // start ping loop (server also pings)
-  if (pingInterval) clearInterval(pingInterval);
-  pingInterval = setInterval(()=> {
-    send({ type: 'pong', ts: Date.now() }); // respond to server pings; also keep connection alive
-  }, 5000);
-}
-// send helper w/ small validation
+connect();
+
 function send(obj) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  try { ws.send(JSON.stringify(obj)); } catch(e) {}
-}
-function onClose() {
-  connected = false;
-  statusText.textContent = 'ارتباط قطع شد، تلاش برای اتصال مجدد...';
-  gameStarted = false;
-  // clear buffer
-  stateBuffer = [];
-  if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
-  setTimeout(()=> {
-    reconnectDelay = Math.min(MAX_RECONNECT, reconnectDelay * 1.5);
-    connect();
-  }, reconnectDelay);
-}
-function onError() {
-  // silent; reconnect on close
+  ws.send(JSON.stringify(obj));
 }
 
-// message handler
-function onMessage(e) {
-  let data;
-  try { data = JSON.parse(e.data); } catch { return; }
-  const t = data.type;
-  if (t === 'assign') {
-    playerId = data.playerId;
-    statusText.textContent = `شما بازیکن ${playerId + 1} هستید`;
-    return;
-  }
-  if (t === 'lobby') {
-    // statuses: no_waiting | someone_waiting | waiting_for_opponent
-    const st = data.status;
-    if (st === 'no_waiting') {
-      menu.style.display = 'block';
-      wantBtn.style.display = 'inline-block';
-      startBtn.style.display = 'none';
-      cancelBtn.style.display = 'none';
-      statusText.textContent = 'هیچ بازیکنی منتظر نیست';
-      wantPlaying = false;
-    } else if (st === 'someone_waiting') {
-      menu.style.display = 'block';
-      wantBtn.style.display = 'none';
-      startBtn.style.display = 'inline-block';
-      cancelBtn.style.display = 'none';
-      statusText.textContent = 'یک بازیکن منتظر است - می‌توانید شروع کنید';
-      wantPlaying = false;
-    } else if (st === 'waiting_for_opponent') {
-      menu.style.display = 'block';
-      wantBtn.style.display = 'none';
-      startBtn.style.display = 'none';
-      cancelBtn.style.display = 'inline-block';
-      statusText.textContent = 'شما در صف انتظار هستید';
-      wantPlaying = true;
-    }
-    return;
-  }
-  if (t === 'start') {
-    gameStarted = true;
-    menu.style.display = 'none';
-    statusText.textContent = 'بازی شروع شد';
-    // clear buffer to avoid snapping
-    stateBuffer = [];
-    return;
-  }
-  if (t === 'state') {
-    const s = data.state;
-    if (!s) return;
-    const serverTs = (data.meta && data.meta.ts) ? data.meta.ts : Date.now();
-
-    // بررسی reset یا جابجایی شدید توپ
-    const lastBall = stateBuffer.length ? stateBuffer[stateBuffer.length - 1].state.ball : null;
-    if (lastBall && Math.abs(lastBall.y - s.ball.y) > 50) {
-        stateBuffer = []; // توپ reset شد، buffer را پاک می‌کنیم
-    }
-
-    stateBuffer.push({ ts: serverTs, state: s });
-    lastServerTs = serverTs;
-    while (stateBuffer.length > 10) stateBuffer.shift();
-    gameState = s;
-    return;
-}
-
-  if (t === 'ping') {
-    // reply with pong immediately
-    send({ type: 'pong', ts: Date.now() });
-    return;
-  }
-  if (t === 'full') {
-    alert('سرور پر شده است — بعداً تلاش کنید');
-    return;
-  }
-  if (t === 'declined') {
-    statusText.textContent = 'رقیب لغو کرد';
-    menu.style.display = 'block';
-    wantBtn.style.display = 'inline-block';
-    startBtn.style.display = 'none';
-    cancelBtn.style.display = 'none';
-    wantPlaying = false;
-    return;
-  }
-  // ignore other types
-}
-
-// UI actions
-wantBtn.onclick = () => {
-  if (!connected) return;
-  send({ type: 'waitForPlayer' });
-};
-startBtn.onclick = () => {
-  if (!connected) return;
-  send({ type: 'acceptMatch' });
-};
-cancelBtn.onclick = () => {
-  if (!connected) return;
-  send({ type: 'cancelWait' });
-};
-
-// paddle sending with client-side prediction
-function sendPaddleLogical(logicalX) {
-  if (!connected || !gameStarted) return;
+// Paddle sending with client prediction
+function sendPaddle(logicalX) {
   const now = Date.now();
   if (now - lastSendTs < SEND_THROTTLE) return;
   lastSendTs = now;
-  // clamp
   const maxLeft = LOGICAL_W - 100;
   const clamped = Math.max(0, Math.min(maxLeft, logicalX));
-  // local prediction: update our renderPaddles immediately
-  if (typeof playerId === 'number') {
-    renderPaddles[playerId].x = clamped;
-  }
+  // update local render for smooth movement
+  if (typeof playerId === 'number') renderPaddles[playerId].x = clamped;
   send({ type: 'paddle', x: +clamped.toFixed(2) });
 }
 
-// input handlers (touch + mouse)
-// convert clientX to logical coordinate
-document.addEventListener('mousemove', (e) => {
+// Input
+document.addEventListener('mousemove', e => {
   if (!gameStarted) return;
   const lx = clientXToLogical(e.clientX);
-  sendPaddleLogical(lx - 50); // clientXToLogical returns center-based? we've adjusted below as earlier functions do - adjust to match server's expected x
+  sendPaddle(lx - 50);
 });
-document.addEventListener('touchstart', (e) => { if (!gameStarted) return; e.preventDefault(); const lx = clientXToLogical(e.touches[0].clientX); sendPaddleLogical(lx - 50); }, {passive:false});
-document.addEventListener('touchmove', (e) => { if (!gameStarted) return; e.preventDefault(); const lx = clientXToLogical(e.touches[0].clientX); sendPaddleLogical(lx - 50); }, {passive:false});
+document.addEventListener('touchmove', e => {
+  if (!gameStarted) return;
+  e.preventDefault();
+  const lx = clientXToLogical(e.touches[0].clientX);
+  sendPaddle(lx - 50);
+}, {passive:false});
 
-// interpolation utilities
+// Interpolation
 function interpolateState(renderTs) {
-  // need two samples surrounding renderTs: earlier <= renderTs <= later
   if (stateBuffer.length === 0) return null;
-  // find pair
   let i = 0;
   while (i < stateBuffer.length && stateBuffer[i].ts <= renderTs) i++;
-  if (i === 0) return stateBuffer[0].state;                 // too early
-  if (i >= stateBuffer.length) return stateBuffer[stateBuffer.length - 1].state; // too new
-  const a = stateBuffer[i - 1];
-  const b = stateBuffer[i];
+  if (i === 0) return stateBuffer[0].state;
+  if (i >= stateBuffer.length) return stateBuffer[stateBuffer.length - 1].state;
+  const a = stateBuffer[i-1], b = stateBuffer[i];
   const t = (renderTs - a.ts) / Math.max(1, (b.ts - a.ts));
-  // linear interpolate ball and paddles
   const lerp = (v0, v1, t) => v0 + (v1 - v0) * t;
-  const res = {
-    ball: {
-      x: lerp(a.state.ball.x, b.state.ball.x, t),
-      y: lerp(a.state.ball.y, b.state.ball.y, t),
-      r: a.state.ball.r
-    },
+  return {
+    ball: { x: lerp(a.state.ball.x, b.state.ball.x, t), y: lerp(a.state.ball.y, b.state.ball.y, t), r: a.state.ball.r },
     paddles: [
       { x: lerp(a.state.paddles[0].x, b.state.paddles[0].x, t), y: a.state.paddles[0].y, w: a.state.paddles[0].w, h: a.state.paddles[0].h },
       { x: lerp(a.state.paddles[1].x, b.state.paddles[1].x, t), y: a.state.paddles[1].y, w: a.state.paddles[1].w, h: a.state.paddles[1].h }
     ],
     scores: a.state.scores
   };
-  return res;
 }
 
-// render loop
+// Render loop
 function drawLoop() {
-  // clear using CSS coordinates
   const ratio = window.devicePixelRatio || 1;
   const displayW = canvas.width / ratio;
   const displayH = canvas.height / ratio;
   ctx.clearRect(0,0,displayW,displayH);
 
-  // compute scales (scaleX/scaleY separate to fill screen)
   const scaleX = displayW / LOGICAL_W;
   const scaleY = displayH / LOGICAL_H;
   const offsetX = (displayW - LOGICAL_W * scaleX) / 2;
   const offsetY = (displayH - LOGICAL_H * scaleY) / 2;
 
-  // compute render timestamp (server time) we want to display
-  const now = Date.now();
   const renderTs = Date.now() - INTERP_MS;
-
-  // interpolation
-  let drawState = null;
-  if (stateBuffer.length > 0) {
-    drawState = interpolateState(renderTs);
-  } else if (gameState) {
-    drawState = gameState;
-  }
+  let drawState = gameState ? interpolateState(renderTs) : null;
 
   if (drawState) {
-   // smooth renderBall toward interpolated ball (extra smoothing)
-  renderBall.x = drawState.ball.x;
-  renderBall.y = drawState.ball.y;
-  
-    
-  // draw ball
-   ctx.fillStyle = '#fff';
-   ctx.beginPath();
-   ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
-   Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
-   ctx.fill();
- 
- 
+    renderBall.x = drawState.ball.x;
+    renderBall.y = drawState.ball.y;
 
+    // draw ball
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
+            Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI*2);
+    ctx.fill();
 
-    
-    // paddles - apply local smoothing for sides
+    // draw paddles
     drawState.paddles.forEach((p, i) => {
-      // client-side prediction: if this is my paddle, use our predicted renderPaddles[i].x (already set on send)
       if (typeof playerId === 'number' && i === playerId) {
-        // renderPaddles already updated on sendPaddleLogical
-        renderPaddles[i].x += (renderPaddles[i].x - renderPaddles[i].x) * 0; // noop to keep predicted
+        // predicted paddle
+        renderPaddles[i].x += (renderPaddles[i].x - renderPaddles[i].x) * 0;
       } else {
-        // smooth toward server
+        // smooth opponent
         renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.28;
       }
       renderPaddles[i].y = p.y;
@@ -341,44 +147,37 @@ function drawLoop() {
                    p.w * scaleX, p.h * scaleY);
     });
 
-    // score
-   if (drawState.scores) {
-  ctx.fillStyle = '#fff';
-  ctx.font = `${Math.max(12, Math.round(20 * Math.min(scaleX, scaleY)))}px Tahoma`;
-  ctx.textAlign = 'center';
-  ctx.fillText(`${drawState.scores[0]} - ${drawState.scores[1]}`, displayW / 2, offsetY + 26);
-}
-
+    // draw score
+    ctx.fillStyle = '#fff';
+    ctx.font = `${Math.max(12, Math.round(20 * Math.min(scaleX, scaleY)))}px Tahoma`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${drawState.scores[0]} - ${drawState.scores[1]}`, displayW/2, offsetY + 26);
   } else {
-    // fallback UI text
     ctx.fillStyle = '#fff';
     ctx.font = '16px Tahoma';
     ctx.textAlign = 'center';
-    ctx.fillText('در انتظار شروع بازی... (یا روی "می‌خواهم بازی کنم" بزنید)', displayW / 2, displayH / 2);
+    ctx.fillText('در انتظار شروع بازی...', displayW/2, displayH/2);
   }
 
   requestAnimationFrame(drawLoop);
 }
 requestAnimationFrame(drawLoop);
 
-// start websocket
-connect();
+// Handle server messages
+function onMessage(e) {
+  let data;
+  try { data = JSON.parse(e.data); } catch { return; }
+  const t = data.type;
+
+  if (t === 'assign') playerId = data.playerId;
+  if (t === 'start') gameStarted = true;
+  if (t === 'state') {
+    const s = data.state;
+    const serverTs = data.meta?.ts || Date.now();
+    stateBuffer.push({ ts: serverTs, state: s });
+    while (stateBuffer.length > 10) stateBuffer.shift();
+    gameState = s;
+  }
+  if (t === 'ping') send({ type: 'pong', ts: Date.now() });
+}
 </script>
-</body>
-</html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
