@@ -73,7 +73,7 @@ function tick() {
   // paddle collisions
   for (let i = 0; i < 2; i++) {
   const p = state.paddles[i];
-  const PADDLE_MARGIN = 5;
+  const PADDLE_MARGIN = 10;
   const hit = b.y + b.r > p.y - PADDLE_MARGIN && b.y - b.r < p.y + p.h + PADDLE_MARGIN && b.x + b.r > p.x && b.x - b.r < p.x + p.w
   if (hit) {
     // برخورد محکم و دقیق‌تر
@@ -239,6 +239,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
