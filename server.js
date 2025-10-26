@@ -1,6 +1,6 @@
 'use strict';
 
-const WebSocket = require('ws');
+const WebSocket = require('wss');
 const http = require('http');
 const url = require('url');
 const fs = require('fs');
@@ -258,3 +258,4 @@ setInterval(()=>{
 },HEARTBEAT_MS);
 
 console.log(`WebSocket server running on port ${PORT}`);
+
