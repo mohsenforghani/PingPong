@@ -113,6 +113,13 @@
             const data = JSON.parse(e.data);
 
             switch(data.type) {
+                case 'requestName':
+                    if (!player1Name) {
+                        const name = prompt(data.message);
+                        player1Name = name;
+                        ws.send(JSON.stringify({ type: 'setName', name: player1Name }));
+                    }
+                    break;
                 case 'state':
                     updateGameState(data.state);
                     break;
@@ -128,7 +135,6 @@
                     startNewGame();
                     break;
                 case 'start':
-                    // بازی شروع می‌شود وقتی وضعیت از سمت سرور ارسال می‌شود
                     currentRoomId = data.roomId;
                     startNewGame();
                     break;
