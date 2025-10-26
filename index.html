@@ -2,82 +2,126 @@
 <html lang="fa">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Ping Pong Lobby</title>
 <style>
-body { font-family: Tahoma, sans-serif; background: #f0f0f0; }
-h1 { text-align: center; }
-#status { text-align: center; margin-bottom: 10px; }
-#rooms { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.room {
-    width: 90px; height: 90px; background: blue; color: white;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    font-size: 9px; cursor: pointer; border-radius: 6px;
-    text-align: center;
-}
-.room.waiting { background: orange; }
-.room.playing { background: red; }
-.room.finished { background: purple; }
+    html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: sans-serif;
+        background: #f0f0f0;
+        overflow: hidden;
+    }
+    #lobbyContainer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: repeat(5, 1fr);
+        gap: 2px;
+        height: calc(100% - 40px); /* 40px برای نوار پیام */
+    }
+    .roomTile {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        color: #fff;
+        font-weight: bold;
+        cursor: pointer;
+        user-select: none;
+    }
+    .empty { background: #3498db; }       /* آبی */
+    .waiting { background: #e67e22; }     /* نارنجی */
+    .playing { background: #e74c3c; }     /* قرمز */
+    #statusBar {
+        height: 40px;
+        background: #222;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+    }
 </style>
 </head>
 <body>
-<h1>لابی بازی Ping Pong</h1>
-<div id="status">وضعیت: در حال وصل شدن...</div>
-<div id="rooms"></div>
+<div id="lobbyContainer">
+    <!-- 10 مربع اتاق -->
+    <div class="roomTile empty" data-id="0">اتاق خالی</div>
+    <div class="roomTile empty" data-id="1">اتاق خالی</div>
+    <div class="roomTile empty" data-id="2">اتاق خالی</div>
+    <div class="roomTile empty" data-id="3">اتاق خالی</div>
+    <div class="roomTile empty" data-id="4">اتاق خالی</div>
+    <div class="roomTile empty" data-id="5">اتاق خالی</div>
+    <div class="roomTile empty" data-id="6">اتاق خالی</div>
+    <div class="roomTile empty" data-id="7">اتاق خالی</div>
+    <div class="roomTile empty" data-id="8">اتاق خالی</div>
+    <div class="roomTile empty" data-id="9">اتاق خالی</div>
+</div>
+<div id="statusBar">وضعیت: در حال وصل شدن...</div>
 
 <script>
+const statusBar = document.getElementById('statusBar');
+const tiles = document.querySelectorAll('.roomTile');
 let ws;
-let playerName = null;
-let roomsData = [];
-function connect() {
-    ws = new WebSocket('wss://pingpong-te0t.onrender.com'); // آدرس سرور
-    ws.onopen = () => { document.getElementById('status').innerText = 'وضعیت: متصل'; askName(); };
-    ws.onmessage = onMessage;
-    ws.onclose = () => setTimeout(connect, 2000);
-}
-function askName() {
-    playerName = prompt("لطفاً نام خود را وارد کنید");
-    if (!playerName) playerName = 'بازیکن';
-    ws.send(JSON.stringify({ type:'setName', name: playerName }));
-}
-function onMessage(e) {
-    let data;
-    try { data = JSON.parse(e.data); } catch { return; }
-    if (data.type === 'lobbySnapshot') updateRooms(data.rooms);
-}
-function updateRooms(rooms) {
-    roomsData = rooms;
-    const container = document.getElementById('rooms');
-    container.innerHTML = '';
-    rooms.forEach(r => {
-        const div = document.createElement('div');
-        div.className = 'room ' + r.status;
-        div.innerHTML = `
-            ${r.status==='empty'?'اتاق خالی':
-              r.status==='waiting'?'در انتظار بازیکن دوم':
-              r.status==='playing'?'در حال بازی':'پایان'}
-            <br>${r.player1||''} - ${r.player2||''}
-            <br>${r.scores ? r.scores[0]+'-'+r.scores[1] : ''}
-        `;
-        div.onclick = () => requestRoom(r.id, r.status);
-        container.appendChild(div);
-    });
-}
-function requestRoom(roomId, status) {
-    if (status==='empty' || status==='waiting') {
-        ws.send(JSON.stringify({ type:'requestRoom', roomId }));
-        alert('درخواست شما ثبت شد. وقتی بازی آماده شد، صفحه بازی باز می‌شود.');
-        // باز شدن صفحه بازی بعد از start
-        ws.onmessage = (e) => {
-            let d;
-            try { d=JSON.parse(e.data); } catch{return;}
-            if (d.type==='start' && d.roomId===roomId) {
-                window.location.href = `game.html?roomId=${roomId}&playerName=${playerName}`;
-            }
-        };
+let myName = null;
+
+function connectWS() {
+    ws = new WebSocket(`ws://${location.host}`);
+    ws.onopen = ()=> { statusBar.innerText='وضعیت: متصل'; requestName(); };
+    ws.onclose = ()=> { statusBar.innerText='وضعیت: قطع اتصال'; setTimeout(connectWS,2000); };
+    ws.onmessage = e => {
+        let data;
+        try { data = JSON.parse(e.data); } catch { return; }
+
+        switch(data.type){
+            case 'requestName':
+                if(!myName) myName = prompt(data.message);
+                ws.send(JSON.stringify({ type:'setName', name: myName }));
+                break;
+            case 'joined':
+                statusBar.innerText = `وضعیت: ${data.name} — آماده`;
+                break;
+            case 'lobbySnapshot':
+                updateLobby(data.rooms);
+                break;
+            case 'roomRequested':
+                statusBar.innerText = `درخواست بازی در اتاق ${data.roomId+1} ثبت شد`;
+                break;
+        }
     }
 }
 
-connect();
+function updateLobby(rooms){
+    rooms.forEach((r,i)=>{
+        const tile = tiles[i];
+        tile.classList.remove('empty','waiting','playing');
+        if(r.status==='empty'){
+            tile.classList.add('empty');
+            tile.innerText='اتاق خالی';
+        } else if(r.status==='waiting'){
+            tile.classList.add('waiting');
+            tile.innerText=`در انتظار بازیکن دوم: ${r.player1}`;
+        } else if(r.status==='playing'){
+            tile.classList.add('playing');
+            const s1 = r.player1||'';
+            const s2 = r.player2||'';
+            const score = r.scores ? `${r.scores[0]}-${r.scores[1]}` : '';
+            tile.innerText=`${s1} vs ${s2}\n${score}`;
+        }
+    });
+}
+
+tiles.forEach(tile=>{
+    tile.addEventListener('click',()=>{
+        const roomId = Number(tile.dataset.id);
+        if(ws && ws.readyState===WebSocket.OPEN){
+            ws.send(JSON.stringify({ type:'requestRoom', roomId }));
+        }
+    });
+});
+
+connectWS();
 </script>
 </body>
 </html>
