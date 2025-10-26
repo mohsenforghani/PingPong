@@ -8,7 +8,7 @@ const path = require('path');
 
 const PORT = process.env.PORT || 8080;
 
-// --- تنظیمات بازی ---
+// تنظیمات بازی
 const GAME_W = 450;
 const GAME_H = 800;
 const TICK_HZ = 50;
@@ -16,7 +16,7 @@ const BASE_BALL_SPEED = 8;
 const HEARTBEAT_MS = 10000;
 const MAX_SCORE = 5;
 
-// --- سرور HTTP ساده برای سرو فایل‌های html و js ---
+// ایجاد سرور HTTP برای سرو فایل‌های HTML و JS
 const server = http.createServer((req, res) => {
     let parsed = url.parse(req.url);
     let pathname = parsed.pathname === '/' ? '/index.html' : parsed.pathname;
@@ -39,10 +39,10 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => console.log(`HTTP server running on port ${PORT}`));
 
-// --- WebSocket ---
+// ایجاد WebSocket Server
 const wss = new WebSocket.Server({ server });
 
-// --- داده‌های لابی و اتاق‌ها ---
+// داده‌های لابی و اتاق‌ها
 let rooms = Array.from({ length: 10 }).map(() => ({
     status: 'empty',      // empty / waiting / playing / finished
     player1: null,        // { ws, name, paddleX }
@@ -53,7 +53,7 @@ let rooms = Array.from({ length: 10 }).map(() => ({
     rematchRequests: {}
 }));
 
-// --- کمکی‌ها ---
+// کمکی‌ها
 function send(ws, obj) {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     obj.meta = { ts: Date.now() };
@@ -81,7 +81,7 @@ function resetBall(room) {
     };
 }
 
-// --- حلقه بازی ---
+// حلقه بازی
 function gameLoop(roomId) {
     const room = rooms[roomId];
     if (!room || room.status !== 'playing') return;
@@ -122,7 +122,9 @@ function gameLoop(roomId) {
                 { x: room.player1?.paddleX || 0, y: 20, w: 100, h: 20 },
                 { x: room.player2?.paddleX || 0, y: GAME_H - 50, w: 100, h: 20 }
             ],
-            scores: room.scores
+            scores: room.scores,
+            player1: room.player1?.name,
+            player2: room.player2?.name
         },
         meta: { ts: Date.now() }
     };
@@ -144,7 +146,7 @@ function checkGameOver(roomId) {
     }
 }
 
-// --- مدیریت اتصال کلاینت‌ها ---
+// مدیریت اتصال کلاینت‌ها
 wss.on('connection', ws => {
     ws._meta = { name: null, roomId: null, missedPongs: 0 };
 
@@ -202,28 +204,34 @@ wss.on('connection', ws => {
                 const rematchRoom = rooms[ws._meta.roomId];
                 if (!rematchRoom) return;
                 if (!rematchRoom.rematchRequests) rematchRoom.rematchRequests = {};
-                rematchRoom.rematchRequests[ws._meta.name] = true;
-
-                if (rematchRoom.player1 && rematchRoom.player2 &&
-                    rematchRoom.rematchRequests[rematchRoom.player1.name] &&
-                    rematchRoom.rematchRequests[rematchRoom.player2.name]) {
-                    resetBall(rematchRoom);
+                rematchRoom.rematchRequests[ws._meta.name] = ws;
+                if (Object.keys(rematchRoom.rematchRequests).length === 2) {
                     rematchRoom.scores = [0, 0];
-                    send(rematchRoom.player1.ws, { type: 'start', playerIndex: 0, roomId: ws._meta.roomId });
-                    send(rematchRoom.player2.ws, { type: 'start', playerIndex: 1, roomId: ws._meta.roomId });
+                    broadcastLobby();
+                    clearInterval(rematchRoom.loop);
+                    rematchRoom.loop = null;
+                    send(rematchRoom.player1.ws, { type: 'rematchAccepted' });
+                    send(rematchRoom.player2.ws, { type: 'rematchAccepted' });
                 }
                 break;
         }
     });
 
     ws.on('close', () => {
-        const roomId = ws._meta.roomId;
-        if (roomId !== null) {
-            const room = rooms[roomId];
-            if (room.player1?.ws === ws) room.player1 = null;
-            if (room.player2?.ws === ws) room.player2 = null;
-            room.status = 'empty';
-            broadcastLobby();
+        const room = rooms[ws._meta.roomId];
+        if (!room) return;
+        if (room.player1?.ws === ws) {
+            room.player1 = null;
         }
+        if (room.player2?.ws === ws) {
+            room.player2 = null;
+        }
+
+        room.status = 'empty';
+        room.scores = [0, 0];
+        room.ball = null;
+        clearInterval(room.loop);
+        room.loop = null;
+        broadcastLobby();
     });
 });
