@@ -2,6 +2,7 @@
   "name": "pingpong-online",
   "version": "1.0.0",
   "description": "A simple real-time two-player ping pong game using WebSocket.",
+  "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
