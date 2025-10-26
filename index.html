@@ -66,89 +66,77 @@ const tiles = document.querySelectorAll('.roomTile');
 let ws;
 let myName = null;
 
-
-    function startGame() {
-    // مخفی کردن صفحه لابی
-    document.getElementById('lobbyContainer').style.display = 'none';
-
-    // نمایش بازی
-    document.getElementById('gameCanvas').style.display = 'block';
-    
-    // در اینجا می‌توانید بازی را شروع کنید
-        console.log("صفحه بازی در حال باز شدن است...");
-    window.open('game.html', '_blank');
-}
-
-    
 function connectWS() {
     ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
-    
     ws.onopen = () => { 
-        statusBar.innerText = 'وضعیت: متصل';
-        requestName(); // نام را از سرور درخواست می‌کنیم
+        statusBar.innerText = 'وضعیت: متصل'; 
+        requestName();
     };
-    
     ws.onclose = () => { 
         statusBar.innerText = 'وضعیت: قطع اتصال'; 
         setTimeout(connectWS, 2000); 
     };
-    
     ws.onmessage = e => {
         let data;
         try { data = JSON.parse(e.data); } catch { return; }
 
-        switch(data.type){
-            case 'requestName': 
-                if (!myName) myName = prompt(data.message); // درخواست نام از کاربر
-                ws.send(JSON.stringify({ type: 'setName', name: myName })); // ارسال نام به سرور
+        switch (data.type) {
+            case 'requestName':
+                if (!myName) myName = prompt(data.message);
+                ws.send(JSON.stringify({ type: 'setName', name: myName }));
                 break;
-
             case 'joined':
                 statusBar.innerText = `وضعیت: ${data.name} — آماده`;
                 break;
-
             case 'lobbySnapshot':
                 updateLobby(data.rooms);
                 break;
-
             case 'roomRequested':
                 statusBar.innerText = `درخواست بازی در اتاق ${data.roomId + 1} ثبت شد`;
                 break;
-
-            case 'start':
-                // شروع بازی وقتی اتاق آماده باشد
-                statusBar.innerText = `بازی شروع شد!`;
+            case 'startGame':
+                startGame(data.roomId); // زمانی که بازی باید شروع شود
                 break;
         }
-    };
+    }
 }
 
-
-function updateLobby(rooms){
-    rooms.forEach((r,i)=>{
+function updateLobby(rooms) {
+    rooms.forEach((r, i) => {
         const tile = tiles[i];
-        tile.classList.remove('empty','waiting','playing');
-        if(r.status==='empty'){
+        tile.classList.remove('empty', 'waiting', 'playing');
+        if (r.status === 'empty') {
             tile.classList.add('empty');
-            tile.innerText='اتاق خالی';
-        } else if(r.status==='waiting'){
+            tile.innerText = 'اتاق خالی';
+        } else if (r.status === 'waiting') {
             tile.classList.add('waiting');
-            tile.innerText=`در انتظار بازیکن دوم: ${r.player1}`;
-        } else if(r.status==='playing'){
+            tile.innerText = `در انتظار بازیکن دوم: ${r.player1}`;
+        } else if (r.status === 'playing') {
             tile.classList.add('playing');
-            const s1 = r.player1||'';
-            const s2 = r.player2||'';
+            const s1 = r.player1 || '';
+            const s2 = r.player2 || '';
             const score = r.scores ? `${r.scores[0]}-${r.scores[1]}` : '';
-            tile.innerText=`${s1} vs ${s2}\n${score}`;
+            tile.innerText = `${s1} vs ${s2}\n${score}`;
         }
     });
 }
 
-tiles.forEach(tile=>{
-    tile.addEventListener('click',()=>{
+// تابع برای شروع بازی
+function startGame(roomId) {
+    console.log("شروع بازی در اتاق: " + roomId);
+    // مخفی کردن صفحه لابی
+    document.getElementById('lobbyContainer').style.display = 'none';
+
+    // نمایش صفحه بازی (game.html) در همان صفحه
+    window.location.href = 'game.html';  // یا می‌توانید از window.open برای باز کردن در تب جدید استفاده کنید.
+}
+
+// کلیک روی هر اتاق
+tiles.forEach(tile => {
+    tile.addEventListener('click', () => {
         const roomId = Number(tile.dataset.id);
-        if(ws && ws.readyState===WebSocket.OPEN){
-            ws.send(JSON.stringify({ type:'requestRoom', roomId }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'requestRoom', roomId }));
         }
     });
 });
@@ -157,6 +145,7 @@ connectWS();
 </script>
 </body>
 </html>
+
 
 
 
