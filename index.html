@@ -313,24 +313,16 @@ function drawLoop() {
    // smooth renderBall toward interpolated ball (extra smoothing)
   renderBall.x = drawState.ball.x;
   renderBall.y = drawState.ball.y;
-   
-
+  
     
   // draw ball
-  // ctx.fillStyle = '#fff';
-  // ctx.beginPath();
-  //ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
-  //  Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
-  //  ctx.fill();
-  // draw ball
    ctx.fillStyle = '#fff';
-   ctx.shadowColor = '#0ff';
-   ctx.shadowBlur = 10;
    ctx.beginPath();
    ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
-   Math.max(3, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
+   Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
    ctx.fill();
-   ctx.shadowBlur = 0;
+ 
+ 
 
 
     
@@ -374,6 +366,7 @@ connect();
 </script>
 </body>
 </html>
+
 
 
 
