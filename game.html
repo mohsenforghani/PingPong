@@ -102,7 +102,7 @@
     const BALL_SPEED = 5;
 
     function connectWS() {
-        ws = new WebSocket(`ws://${location.host}`);
+        ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
         ws.onopen = () => { console.log('Connected to server'); };
         ws.onmessage = e => {
             const data = JSON.parse(e.data);
@@ -210,3 +210,4 @@
 
 </body>
 </html>
+
