@@ -28,8 +28,8 @@
 /* CONFIG */
 const WS_URL = 'wss://pingpong-te0t.onrender.com'; // set your server
 const LOGICAL_W = 450, LOGICAL_H = 800;
-const INTERP_MS = 50;           // client-side interpolation delay
-const SEND_THROTTLE = 40;      // ms between paddle sends
+const INTERP_MS = 80;           // client-side interpolation delay
+const SEND_THROTTLE = 30;      // ms between paddle sends
 const RECONNECT_BASE = 500;    // reconnect backoff base ms
 const MAX_RECONNECT = 30000;
 
@@ -310,17 +310,31 @@ function drawLoop() {
   }
 
   if (drawState) {
-    // smooth renderBall toward interpolated ball (extra smoothing)
-   renderBall.x = drawState.ball.x;
-renderBall.y = drawState.ball.y;
+   // smooth renderBall toward interpolated ball (extra smoothing)
+   //renderBall.x = drawState.ball.x;
+   // renderBall.y = drawState.ball.y;
+   renderBall.x += (drawState.ball.x - renderBall.x) * 0.25;
+   renderBall.y += (drawState.ball.y - renderBall.y) * 0.25;
 
+    
     // draw ball
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
-            Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
-    ctx.fill();
+   // ctx.fillStyle = '#fff';
+   // ctx.beginPath();
+    //ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
+  //  Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
+  //  ctx.fill();
+// draw ball
+   ctx.fillStyle = '#fff';
+   ctx.shadowColor = '#0ff';
+   ctx.shadowBlur = 10;
+   ctx.beginPath();
+   ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
+   Math.max(3, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI * 2);
+   ctx.fill();
+   ctx.shadowBlur = 0;
 
+
+    
     // paddles - apply local smoothing for sides
     drawState.paddles.forEach((p, i) => {
       // client-side prediction: if this is my paddle, use our predicted renderPaddles[i].x (already set on send)
@@ -361,6 +375,7 @@ connect();
 </script>
 </body>
 </html>
+
 
 
 
