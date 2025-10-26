@@ -7,7 +7,7 @@ const wss = new WebSocket.Server({ port: PORT });
 
 const GAME_W = 450;
 const GAME_H = 800;
-const TICK_HZ =   50;
+const TICK_HZ =   100;
 const SEND_RATE = 16;
 const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
 const MAX_SPEED = 10;
@@ -229,6 +229,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
