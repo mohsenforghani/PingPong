@@ -7,19 +7,20 @@ const wss = new WebSocket.Server({ port: PORT });
 
 const GAME_W = 450;
 const GAME_H = 800;
-const TICK_HZ = 100;
-const MAX_SPEED = 12;
-const BASE_BALL_SPEED = 10;
+const TICK_HZ = 50;
+const MAX_SPEED = 10;
+const BASE_BALL_SPEED = 8;
 const HEARTBEAT_MS = 10000;
 const MAX_MISSED_PONG = 3;
 
 console.log('WebSocket server running on port', PORT);
 
-// --- server state ---
-let players = [null, null];   // [ws, ws]
+// server state
+let players = [null, null]; // max 2 players for now
 let waitingPlayerId = null;
 let seq = 0;
 
+// store multiple games
 let games = {}; // gameId -> { players: [ws1, ws2], state, loop }
 
 // --- helper functions ---
@@ -40,7 +41,7 @@ function broadcast(obj) {
   players.forEach(p => { if (p && p.readyState === WebSocket.OPEN) p.send(payload); });
 }
 
-// --- game creation ---
+// create a new game
 function createGame(player1, player2) {
   const gameId = generateGameId();
   const state = {
@@ -55,15 +56,17 @@ function createGame(player1, player2) {
   return gameId;
 }
 
-function resetBall(state, towardsPlayer = 1) { 
+// reset ball
+function resetBall(state, towardsPlayer = 1) {
   state.ball.x = GAME_W / 2;
   state.ball.y = GAME_H / 2;
-  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6); 
+  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6);
   const dir = (towardsPlayer === 1) ? 1 : -1;
   state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
   state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
 }
 
+// broadcast game state
 function broadcastGameState(game) {
   const state = game.state;
   const payload = {
@@ -78,12 +81,12 @@ function broadcastGameState(game) {
   game.players.forEach(ws => send(ws, payload));
 }
 
-// --- gameloop ---
+// game loop per game
 function gameLoop(game) {
   const state = game.state;
   const b = state.ball;
 
-  // update ball
+  // move ball
   b.x += b.vx;
   b.y += b.vy;
 
@@ -94,29 +97,22 @@ function gameLoop(game) {
   // paddle collisions
   for (let i = 0; i < 2; i++) {
     const p = state.paddles[i];
-    const PADDLE_MARGIN = 10;
-    const hit = b.y + b.r > p.y - PADDLE_MARGIN && b.y - b.r < p.y + p.h + PADDLE_MARGIN &&
-                b.x + b.r > p.x && b.x - b.r < p.x + p.w;
-    if (hit) {
+    if (b.y + b.r > p.y && b.y - b.r < p.y + p.h &&
+        b.x + b.r > p.x && b.x - b.r < p.x + p.w) {
       const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
-      const currentSpeed = Math.sqrt(b.vx ** 2 + b.vy ** 2);
-      const newVy = -Math.sign(b.vy) * Math.abs(b.vy);
-      const newVx = offset * currentSpeed;
+      const speed = Math.sqrt(b.vx ** 2 + b.vy ** 2);
+      b.vy = -b.vy;
+      b.vx = offset * Math.max(1.2, speed);
 
-      b.vx = newVx;
-      b.vy = newVy;
-
-      const boostedSpeed = Math.min(currentSpeed * 1.05, MAX_SPEED);
-      const factor = boostedSpeed / currentSpeed;
-      b.vx *= factor;
-      b.vy *= factor;
+      const cur = Math.sqrt(b.vx ** 2 + b.vy ** 2);
+      if (cur > MAX_SPEED) { const f = MAX_SPEED / cur; b.vx *= f; b.vy *= f; }
 
       if (i === 0) b.y = p.y + p.h + b.r + 0.1;
       else b.y = p.y - b.r - 0.1;
     }
   }
 
-  // score check
+  // scoring
   const SAFE_MARGIN = 10;
   if (b.y < -SAFE_MARGIN) { 
     state.scores[1]++; 
@@ -130,8 +126,8 @@ function gameLoop(game) {
   broadcastGameState(game);
 }
 
-// --- heartbeat ---
-setInterval(()=> {
+// heartbeat
+setInterval(() => {
   players.forEach((p, idx) => {
     if (!p) return;
     try {
@@ -140,7 +136,7 @@ setInterval(()=> {
         p.terminate();
         players[idx] = null;
         if (waitingPlayerId === idx) waitingPlayerId = null;
-        // clear gameloop if this player was in a game
+        // remove any game the player is in
         for (const gid in games) {
           const g = games[gid];
           if (g.players.includes(p)) {
@@ -152,11 +148,11 @@ setInterval(()=> {
         return;
       }
       p.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
-    } catch(e){}
+    } catch(e) {}
   });
 }, HEARTBEAT_MS);
 
-// --- handle connections ---
+// handle connections
 wss.on('connection', ws => {
   const slot = players.findIndex(p => p === null);
   if (slot === -1) { ws.send(JSON.stringify({ type: 'full' })); ws.close(); return; }
@@ -175,8 +171,7 @@ wss.on('connection', ws => {
     let data; try { data = JSON.parse(msgRaw); } catch { return; }
     if (!data.type) return;
 
-    switch (data.type) {
-
+    switch(data.type) {
       case 'pong':
         ws._meta.missedPongs = 0;
         break;
@@ -186,7 +181,7 @@ wss.on('connection', ws => {
           waitingPlayerId = ws.playerId;
           send(ws, { type: 'lobby', status: 'waiting_for_opponent' });
           players.forEach((p, idx) => {
-            if (p && idx !== waitingPlayerId) send(p, { type: 'someone_waiting' });
+            if (p && idx !== waitingPlayerId) send(p, { type: 'lobby', status: 'someone_waiting' });
           });
         } else {
           send(ws, { type: 'lobby', status: 'someone_waiting' });
@@ -219,11 +214,10 @@ wss.on('connection', ws => {
         const now = Date.now();
         if (now - ws._meta.lastPaddleTs < 20) return;
         ws._meta.lastPaddleTs = now;
-
         const x = Number(data.x);
         if (!Number.isFinite(x)) return;
-        const pid = ws.playerId;
-        // find game this player is in
+
+        // update paddle in its game
         for (const gid in games) {
           const game = games[gid];
           const idx = game.players.indexOf(ws);
@@ -241,7 +235,6 @@ wss.on('connection', ws => {
       players[id] = null;
       if (waitingPlayerId === id) waitingPlayerId = null;
 
-      // remove player from any game
       for (const gid in games) {
         const g = games[gid];
         if (g.players.includes(ws)) {
