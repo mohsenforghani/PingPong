@@ -1,19 +1,57 @@
-// config.js
-export default {
-  SERVER_PORT: 8080,
+let rooms = Array.from({ length: 10 }).map(() => ({
+  status: 'empty',
+  player1: null,
+  player2: null,
+  scores: [0, 0],
+}));
 
-  MAX_ROOMS: 10,
-  LOGICAL_W: 450,
-  LOGICAL_H: 800,
+function createLobby() {
+  return rooms;
+}
 
-  BALL_SPEED: 6,
-  BALL_RADIUS: 8,
+function joinLobby(roomId, playerName, playerId) {
+  const room = rooms[roomId];
+  if (room.status === 'empty') {
+    room.status = 'waiting';
+    room.player1 = { name: playerName, id: playerId };
+  } else if (room.status === 'waiting') {
+    room.status = 'playing';
+    room.player2 = { name: playerName, id: playerId };
+    room.scores = [0, 0];
+  }
+}
 
-  PADDLE_W: 100,
-  PADDLE_H: 14,
+function updateLobby() {
+  const lobbySnapshot = rooms.map((room, index) => ({
+    id: index,
+    status: room.status,
+    player1: room.player1,
+    player2: room.player2,
+    scores: room.scores,
+  }));
+  return lobbySnapshot;
+}
 
-  WIN_SCORE: 20,
+function removePlayerFromLobby(roomId, playerId) {
+  const room = rooms[roomId];
+  if (room.player1.id === playerId) {
+    room.player1 = null;
+  } else if (room.player2.id === playerId) {
+    room.player2 = null;
+  }
+  if (!room.player1 && !room.player2) {
+    room.status = 'empty';
+  }
+}
 
-  TICK_RATE: 1000 / 60,
-  LOBBY_REFRESH: 10000
+function getLobbySnapshot() {
+  return rooms;
+}
+
+module.exports = {
+  createLobby,
+  joinLobby,
+  updateLobby,
+  removePlayerFromLobby,
+  getLobbySnapshot,
 };
