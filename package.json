@@ -1,9 +1,9 @@
 {
   "name": "pingpong-online",
   "version": "1.0.0",
-  "description": "A game by Mehraad Soft",
-  "type": "module",
+  "description": "بازی آنلاین پینگ‌پنگ دو نفره با WebSocket و مدیریت ۱۰ روم",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
