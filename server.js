@@ -1,284 +1,260 @@
-// server.js
-import WebSocket, { WebSocketServer } from 'ws';
-import {
-  PORT, GAME_W, GAME_H, BASE_BALL_SPEED, MAX_SPEED, BALL_RADIUS,
-  MAX_SCORE, TICK_HZ, HEARTBEAT_MS, MAX_MISSED_PONG,
-  TOTAL_ROOMS, rooms, joinLobby, removePlayerFromLobby, getLobbySnapshot
-} from './config.js';
+'use strict';
 
-console.log('Starting PingPong Server on port', PORT);
+const WebSocket = require('ws');
+const PORT = process.env.PORT || 8080;
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocket.Server({ port: PORT });
+console.log('WebSocket server running on port', PORT);
 
-// --- سرور state ---
-let clients = new Map(); // clientId -> ws
-let nextClientId = 1;
+// --- تنظیمات بازی ---
+const GAME_W = 450;
+const GAME_H = 800;
+const TICK_HZ = 50;
+const BASE_BALL_SPEED = 8;
+const MAX_SPEED = 12;
+const HEARTBEAT_MS = 10000;
+const MAX_SCORE = 5;
 
-let games = {}; // roomId -> { state, interval }
+// --- متغیرها ---
+let nextPlayerId = 1;
+
+// --- اتاق‌ها ---
+let rooms = Array.from({ length: 10 }).map(() => ({
+    status: 'empty',        // empty / waiting / playing / finished
+    player1: null,          // { ws, name, paddleX, id }
+    player2: null,
+    scores: [0, 0],
+    ball: null,
+    loop: null,
+    rematchRequests: {}
+}));
 
 // --- توابع کمکی ---
 function send(ws, obj) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify(obj));
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!obj.meta) obj.meta = {};
+    obj.meta.ts = Date.now();
+    ws.send(JSON.stringify(obj));
 }
 
 function broadcastLobby() {
-  const snapshot = getLobbySnapshot();
-  clients.forEach(ws => send(ws, { type: 'lobbySnapshot', rooms: snapshot }));
+    const snapshot = rooms.map((r, i) => ({
+        id: i,
+        status: r.status,
+        player1: r.player1 ? r.player1.name : null,
+        player2: r.player2 ? r.player2.name : null,
+        scores: r.scores
+    }));
+    wss.clients.forEach(ws => send(ws, { type: 'lobbySnapshot', rooms: snapshot }));
 }
 
-// --- ایجاد توپ و ریست ---
-function resetBall(state) {
-  state.ball = {
-    x: GAME_W / 2,
-    y: GAME_H / 2,
-    vx: BASE_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
-    vy: BASE_BALL_SPEED * (Math.random() > 0.5 ? 1 : -1),
-    r: BALL_RADIUS
-  };
+function resetBall(room) {
+    room.ball = {
+        x: GAME_W / 2,
+        y: GAME_H / 2,
+        r: 15,
+        vx: BASE_BALL_SPEED * (Math.random() < 0.5 ? 1 : -1),
+        vy: BASE_BALL_SPEED * (Math.random() < 0.5 ? 1 : -1)
+    };
 }
 
-function createGameState(room) {
-  return {
-    roomId: room.id,
-    ball: { x: 0, y: 0, vx: 0, vy: 0, r: BALL_RADIUS },
-    paddles: [
-      { x: GAME_W / 2 - 50, y: 20, w: 100, h: 20 },             // player1
-      { x: GAME_W / 2 - 50, y: GAME_H - 50, w: 100, h: 20 }     // player2
-    ],
-    scores: [0, 0]
-  };
-}
-
-// --- بازیابی clientId از ws ---
-function getClientId(ws) {
-  for (let [id, sock] of clients.entries()) {
-    if (sock === ws) return id;
-  }
-  return null;
-}
-// --- WebSocket connection ---
-wss.on('connection', ws => {
-  const clientId = nextClientId++;
-  clients.set(clientId, ws);
-  ws._meta = { missedPongs: 0, name: null, currentRoom: null };
-
-  console.log(`Client ${clientId} connected`);
-  send(ws, { type: 'assigned', clientId });
-
-  // ارسال snapshot لابی
-  broadcastLobby();
-
-  ws.on('message', msgRaw => {
-    let data;
-    try { data = JSON.parse(msgRaw); } catch { return; }
-    const t = data.type;
-
-    switch(t) {
-      case 'setName':
-        ws._meta.name = data.name || `بازیکن${clientId}`;
-        send(ws, { type: 'joined', name: ws._meta.name });
-        broadcastLobby();
-        break;
-
-      case 'requestRoom':
-        const roomId = data.roomId;
-        joinLobby(roomId, ws._meta.name, clientId);
-        ws._meta.currentRoom = roomId;
-        send(ws, { type: 'roomRequested', roomId });
-        broadcastLobby();
-        startGameIfReady(roomId);
-        break;
-
-      case 'cancelRequest':
-        if (ws._meta.currentRoom != null) {
-          removePlayerFromLobby(ws._meta.currentRoom, clientId);
-          ws._meta.currentRoom = null;
-          send(ws, { type: 'requestCancelled' });
-          broadcastLobby();
-        }
-        break;
-
-      case 'paddle':
-        handlePaddleMove(ws, data.x);
-        break;
-
-      case 'pong':
-        ws._meta.missedPongs = 0;
-        break;
-
-      case 'rematch':
-        handleRematch(ws);
-        break;
-    }
-  });
-
-  ws.on('close', () => handleDisconnect(ws));
-  ws.on('error', () => handleDisconnect(ws));
-});
-// --- شروع بازی اگر هر دو حاضر شدند ---
-function startGameIfReady(roomId) {
-  const room = rooms[roomId];
-  if (!room) return;
-  if (room.status === 'playing' && !games[roomId]) {
-    const state = createGameState(room);
-    resetBall(state);
-    games[roomId] = { state, interval: setInterval(()=> gameLoop(roomId), 1000/TICK_HZ) };
-    // اطلاع به بازیکنان
-    [room.player1, room.player2].forEach(p => {
-      const ws = clients.get(p.id);
-      if (ws) send(ws, { type: 'start', roomId, playerIndex: p === room.player1 ? 0 : 1 });
-    });
-  }
-}
-
-// --- حرکت توپ و برخورد ---
+// --- حلقه بازی ---
 function gameLoop(roomId) {
-  const g = games[roomId];
-  if (!g) return;
-  const state = g.state;
-  const b = state.ball;
+    const room = rooms[roomId];
+    if (!room || room.status !== 'playing' || !room.ball) return;
 
-  b.x += b.vx;
-  b.y += b.vy;
+    const b = room.ball;
 
-  // برخورد با دیوار
-  if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx); }
-  if (b.x + b.r > GAME_W) { b.x = GAME_W - b.r; b.vx = -Math.abs(b.vx); }
+    // حرکت توپ
+    b.x += b.vx;
+    b.y += b.vy;
 
-  // برخورد با پدل‌ها
-  state.paddles.forEach((p, idx) => {
-    if (b.y + b.r > p.y && b.y - b.r < p.y + p.h &&
-        b.x + b.r > p.x && b.x - b.r < p.x + p.w) {
-      const offset = (b.x - (p.x + p.w/2)) / (p.w/2);
-      const speed = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
-      b.vy = -b.vy;
-      b.vx = offset * Math.max(1.2, speed);
-      const cur = Math.sqrt(b.vx*b.vx + b.vy*b.vy);
-      if (cur > MAX_SPEED) { const f = MAX_SPEED / cur; b.vx *= f; b.vy *= f; }
-      if (idx === 0) b.y = p.y + p.h + b.r + 0.1;
-      else b.y = p.y - b.r - 0.1;
+    // برخورد با دیواره‌ها
+    if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx); }
+    if (b.x + b.r > GAME_W) { b.x = GAME_W - b.r; b.vx = -Math.abs(b.vx); }
+
+    // برخورد با پدل‌ها
+    const pad1 = room.player1 ? { x: room.player1.paddleX, y: 20, w: 100, h: 20 } : null;
+    const pad2 = room.player2 ? { x: room.player2.paddleX, y: GAME_H - 50, w: 100, h: 20 } : null;
+
+    if (pad1 && b.y - b.r < pad1.y + pad1.h &&
+        b.y + b.r > pad1.y &&
+        b.x + b.r > pad1.x && b.x - b.r < pad1.x + pad1.w) {
+        b.vy = Math.abs(b.vy);
     }
-  });
 
-  // امتیازدهی
-  if (b.y < 0) {
-    state.scores[1]++;
-    checkGameOver(roomId);
-    resetBall(state);
-  }
-  if (b.y > GAME_H) {
-    state.scores[0]++;
-    checkGameOver(roomId);
-    resetBall(state);
-  }
-
-  // ارسال state به بازیکنان
-  sendGameState(roomId);
-}
-
-// --- ارسال state ---
-function sendGameState(roomId) {
-  const g = games[roomId];
-  if (!g) return;
-  const room = rooms[roomId];
-  const payload = {
-    type: 'state',
-    state: g.state
-  };
-  [room.player1, room.player2].forEach(p => {
-    const ws = clients.get(p.id);
-    if (ws) send(ws, payload);
-  });
-}
-
-// --- بررسی پایان بازی ---
-function checkGameOver(roomId) {
-  const g = games[roomId];
-  const room = rooms[roomId];
-  if (!g || !room) return;
-  const scores = g.state.scores;
-  if (scores[0] >= MAX_SCORE || scores[1] >= MAX_SCORE) {
-    [room.player1, room.player2].forEach((p, idx) => {
-      const ws = clients.get(p.id);
-      if (ws) send(ws, { type: 'gameover', winner: scores[0]>=MAX_SCORE?0:1, scores });
-    });
-    clearInterval(g.interval);
-    delete games[roomId];
-    room.status = 'empty';
-    room.player1 = null;
-    room.player2 = null;
-    broadcastLobby();
-  }
-}
-
-// --- مدیریت paddle move ---
-function handlePaddleMove(ws, x) {
-  const roomId = ws._meta.currentRoom;
-  if (roomId == null) return;
-  const g = games[roomId];
-  if (!g) return;
-  const idx = (g.state.paddles[0].y < g.state.paddles[1].y) ? 0 : 1;
-  g.state.paddles[idx].x = Math.max(0, Math.min(GAME_W - g.state.paddles[idx].w, x));
-}
-// --- heartbeat ---
-setInterval(() => {
-  clients.forEach((ws, clientId) => {
-    ws._meta.missedPongs = (ws._meta.missedPongs || 0) + 1;
-    if (ws._meta.missedPongs > MAX_MISSED_PONG) {
-      handleDisconnect(ws);
-      return;
+    if (pad2 && b.y + b.r > pad2.y &&
+        b.y - b.r < pad2.y + pad2.h &&
+        b.x + b.r > pad2.x && b.x - b.r < pad2.x + pad2.w) {
+        b.vy = -Math.abs(b.vy);
     }
-    send(ws, { type: 'ping', ts: Date.now() });
-  });
-}, HEARTBEAT_MS);
 
-// --- مدیریت قطع اتصال ---
-function handleDisconnect(ws) {
-  const clientId = getClientId(ws);
-  if (clientId != null) {
-    const roomId = ws._meta.currentRoom;
-    if (roomId != null) removePlayerFromLobby(roomId, clientId);
-    clients.delete(clientId);
+    // امتیازدهی
+    if (b.y < -10) {
+        if (room.player2) room.scores[1]++;
+        checkGameOver(roomId);
+        resetBall(room);
+    }
 
-    // اگر در بازی بود، اعلام به حریف
-    const g = games[roomId];
-    if (g) {
-      const room = rooms[roomId];
-      [room.player1, room.player2].forEach(p => {
-        if (p && p.id !== clientId) {
-          const w = clients.get(p.id);
-          if (w) send(w, { type: 'opponent_left' });
+    if (b.y > GAME_H + 10) {
+        if (room.player1) room.scores[0]++;
+        checkGameOver(roomId);
+        resetBall(room);
+    }
+
+    // ارسال وضعیت به بازیکنان
+    const state = {
+        type: 'state',
+        state: {
+            ball: { x: +b.x.toFixed(2), y: +b.y.toFixed(2), r: b.r },
+            paddles: [
+                pad1 || { x: 0, y: 20, w: 100, h: 20 },
+                pad2 || { x: 0, y: GAME_H - 50, w: 100, h: 20 }
+            ],
+            scores: room.scores
         }
-      });
-      clearInterval(g.interval);
-      delete games[roomId];
-      room.status = 'empty';
-      room.player1 = null;
-      room.player2 = null;
+    };
+    if (room.player1) send(room.player1.ws, state);
+    if (room.player2) send(room.player2.ws, state);
+}
+
+// --- پایان بازی ---
+function checkGameOver(roomId) {
+    const room = rooms[roomId];
+    if (!room) return;
+    if (room.scores[0] >= MAX_SCORE || room.scores[1] >= MAX_SCORE) {
+        room.status = 'finished';
+        if (room.player1) send(room.player1.ws, { type:'gameover', scores: room.scores, winner: room.scores[0]>=MAX_SCORE ? 0:1 });
+        if (room.player2) send(room.player2.ws, { type:'gameover', scores: room.scores, winner: room.scores[1]>=MAX_SCORE ? 1:0 });
+        clearInterval(room.loop);
+        room.loop = null;
+        broadcastLobby();
     }
-    broadcastLobby();
-  }
 }
 
-// --- مدیریت درخواست ری‌مچ ---
-function handleRematch(ws) {
-  const roomId = ws._meta.currentRoom;
-  if (roomId == null) return;
-  const room = rooms[roomId];
-  if (!room) return;
-  ws._meta.rematchRequested = true;
+// --- مدیریت اتصال کلاینت ---
+wss.on('connection', ws => {
+    ws._meta = { name:null, roomId:null, paddleX: GAME_W/2, missedPongs:0, id: nextPlayerId++ };
 
-  const otherPlayer = (room.player1.id === getClientId(ws)) ? room.player2 : room.player1;
-  const wsOther = clients.get(otherPlayer.id);
-  if (wsOther) send(wsOther, { type: 'rematchRequested' });
+    // درخواست نام بازیکن
+    send(ws, { type:'requestName', message:'لطفاً نام خود را وارد کنید' });
 
-  if (wsOther && wsOther._meta.rematchRequested) {
-    // هر دو درخواست داده‌اند، شروع دوباره
-    startGameIfReady(roomId);
-    ws._meta.rematchRequested = false;
-    wsOther._meta.rematchRequested = false;
-    send(ws, { type: 'rematchAccepted' });
-    send(wsOther, { type: 'rematchAccepted' });
-  }
-}
+    ws.on('message', raw => {
+        let data;
+        try { data = JSON.parse(raw); } catch { return; }
+
+        switch(data.type){
+            case 'setName':
+                if(typeof data.name!=='string') return;
+                ws._meta.name = data.name;
+                send(ws, { type:'joined', name:data.name });
+                broadcastLobby();
+                break;
+
+            case 'requestRoom':
+                const rid = data.roomId;
+                if(rid<0||rid>=rooms.length) return;
+                const room = rooms[rid];
+
+                if(room.status==='empty'){
+                    room.status='waiting';
+                    room.player1 = { ws, name: ws._meta.name, paddleX: GAME_W/2, id: ws._meta.id };
+                    ws._meta.roomId = rid;
+                    send(ws, { type:'roomRequested', roomId:rid });
+                    broadcastLobby();
+                } else if(room.status==='waiting'){
+                    room.status='playing';
+                    room.player2 = { ws, name: ws._meta.name, paddleX: GAME_W/2, id: ws._meta.id };
+                    ws._meta.roomId = rid;
+                    room.scores=[0,0];
+                    send(room.player1.ws, { type:'start', playerIndex:0, roomId:rid });
+                    send(room.player2.ws, { type:'start', playerIndex:1, roomId:rid });
+                    resetBall(room);
+                    room.loop = setInterval(()=>gameLoop(rid),1000/TICK_HZ);
+                    broadcastLobby();
+                }
+                break;
+
+            case 'cancelRequest':
+                const rId = ws._meta.roomId;
+                if(rId===null) return;
+                const rm = rooms[rId];
+                if(rm.player1 && rm.player1.ws===ws && rm.status==='waiting'){
+                    rm.status='empty';
+                    rm.player1=null;
+                    ws._meta.roomId=null;
+                    send(ws, { type:'requestCancelled' });
+                    broadcastLobby();
+                }
+                break;
+
+            case 'paddle':
+                const x = Number(data.x);
+                if(!Number.isFinite(x)) return;
+                const roomIdx = ws._meta.roomId;
+                if(roomIdx===null) return;
+                const ro = rooms[roomIdx];
+                if(ro.status!=='playing') return;
+                if(ro.player1 && ro.player1.ws===ws) ro.player1.paddleX=x;
+                if(ro.player2 && ro.player2.ws===ws) ro.player2.paddleX=x;
+                break;
+
+            case 'rematch':
+                const rmid = ws._meta.roomId;
+                if(rmid===null) return;
+                const rObj = rooms[rmid];
+                if(!rObj.rematchRequests) rObj.rematchRequests={};
+                rObj.rematchRequests[ws._meta.id]=true;
+                if(rObj.player1 && rObj.player2 &&
+                   rObj.rematchRequests[rObj.player1.id] && rObj.rematchRequests[rObj.player2.id]){
+                    rObj.scores=[0,0];
+                    rObj.status='playing';
+                    resetBall(rObj);
+                    rObj.loop=setInterval(()=>gameLoop(rmid),1000/TICK_HZ);
+                    send(rObj.player1.ws,{type:'rematchAccepted'});
+                    send(rObj.player2.ws,{type:'rematchAccepted'});
+                    rObj.rematchRequests={};
+                    broadcastLobby();
+                } else {
+                    const other = rObj.player1.ws===ws?rObj.player2.ws:rObj.player1.ws;
+                    send(other,{type:'rematchRequested'});
+                }
+                break;
+
+            case 'pong':
+                ws._meta.missedPongs=0;
+                break;
+        }
+    });
+
+    ws.on('close',()=>{
+        const roomId = ws._meta.roomId;
+        if(roomId!==null){
+            const r = rooms[roomId];
+            if(r.player1 && r.player1.ws===ws) r.player1=null;
+            if(r.player2 && r.player2.ws===ws) r.player2=null;
+            if(!r.player1 && !r.player2){
+                r.status='empty';
+                clearInterval(r.loop);
+                r.loop=null;
+            } else {
+                const other = r.player1?r.player1.ws:r.player2?r.player2.ws:null;
+                if(other) send(other,{type:'opponent_left'});
+            }
+            broadcastLobby();
+        }
+    });
+
+    ws.on('error',()=>{});
+});
+
+// --- heartbeat ---
+setInterval(()=>{
+    wss.clients.forEach(ws=>{
+        try{
+            ws._meta.missedPongs=(ws._meta.missedPongs||0)+1;
+            if(ws._meta.missedPongs>3) ws.terminate();
+            else send(ws,{type:'ping', ts:Date.now()});
+        }catch(e){}
+    });
+},HEARTBEAT_MS);
