@@ -68,29 +68,47 @@ let myName = null;
 
 function connectWS() {
     ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
-    ws.onopen = ()=> { statusBar.innerText='وضعیت: متصل'; requestName(); };
-    ws.onclose = ()=> { statusBar.innerText='وضعیت: قطع اتصال'; setTimeout(connectWS,2000); };
+    
+    ws.onopen = () => { 
+        statusBar.innerText = 'وضعیت: متصل';
+        requestName(); // نام را از سرور درخواست می‌کنیم
+    };
+    
+    ws.onclose = () => { 
+        statusBar.innerText = 'وضعیت: قطع اتصال'; 
+        setTimeout(connectWS, 2000); 
+    };
+    
     ws.onmessage = e => {
         let data;
         try { data = JSON.parse(e.data); } catch { return; }
 
         switch(data.type){
-            case 'requestName':
-                if(!myName) myName = prompt(data.message);
-                ws.send(JSON.stringify({ type:'setName', name: myName }));
+            case 'requestName': 
+                if (!myName) myName = prompt(data.message); // درخواست نام از کاربر
+                ws.send(JSON.stringify({ type: 'setName', name: myName })); // ارسال نام به سرور
                 break;
+
             case 'joined':
                 statusBar.innerText = `وضعیت: ${data.name} — آماده`;
                 break;
+
             case 'lobbySnapshot':
                 updateLobby(data.rooms);
                 break;
+
             case 'roomRequested':
-                statusBar.innerText = `درخواست بازی در اتاق ${data.roomId+1} ثبت شد`;
+                statusBar.innerText = `درخواست بازی در اتاق ${data.roomId + 1} ثبت شد`;
+                break;
+
+            case 'start':
+                // شروع بازی وقتی اتاق آماده باشد
+                statusBar.innerText = `بازی شروع شد!`;
                 break;
         }
-    }
+    };
 }
+
 
 function updateLobby(rooms){
     rooms.forEach((r,i)=>{
@@ -125,4 +143,5 @@ connectWS();
 </script>
 </body>
 </html>
+
 
