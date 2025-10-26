@@ -71,14 +71,10 @@ function tick() {
   if (b.x + b.r > GAME_W) { b.x = GAME_W - b.r; b.vx = -Math.abs(b.vx); }
 
   // paddle collisions
-for (let i = 0; i < 2; i++) {
+  for (let i = 0; i < 2; i++) {
   const p = state.paddles[i];
-  const hit =
-    b.x + b.r > p.x &&
-    b.x - b.r < p.x + p.w &&
-    b.y + b.r > p.y &&
-    b.y - b.r < p.y + p.h;
-
+  const PADDLE_MARGIN = 5;
+  const hit = b.y + b.r > p.y - PADDLE_MARGIN && b.y - b.r < p.y + p.h + PADDLE_MARGIN && b.x + b.r > p.x && b.x - b.r < p.x + p.w
   if (hit) {
     // برخورد محکم و دقیق‌تر
     const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
@@ -243,6 +239,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
