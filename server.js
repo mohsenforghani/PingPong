@@ -7,11 +7,11 @@ const wss = new WebSocket.Server({ port: PORT });
 
 const GAME_W = 450;
 const GAME_H = 800;
-const TICK_HZ =   50;
-const SEND_RATE = 15;
+const TICK_HZ =   80;
+const SEND_RATE = 20;
 const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
-const MAX_SPEED = 6;
-const BASE_BALL_SPEED = 6;
+const MAX_SPEED = 8;
+const BASE_BALL_SPEED = 12;
 const HEARTBEAT_MS = 10000;
 const MAX_MISSED_PONG = 3;
 
@@ -71,23 +71,37 @@ function tick() {
   if (b.x + b.r > GAME_W) { b.x = GAME_W - b.r; b.vx = -Math.abs(b.vx); }
 
   // paddle collisions
-  for (let i = 0; i < 2; i++) {
-    const p = state.paddles[i];
-    if (b.y + b.r > p.y && b.y - b.r < p.y + p.h &&
-        b.x + b.r > p.x && b.x - b.r < p.x + p.w) {
+for (let i = 0; i < 2; i++) {
+  const p = state.paddles[i];
+  const hit =
+    b.x + b.r > p.x &&
+    b.x - b.r < p.x + p.w &&
+    b.y + b.r > p.y &&
+    b.y - b.r < p.y + p.h;
 
-      const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
-      const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-      b.vy = -b.vy;
-      b.vx = offset * Math.max(1.2, speed);
+  if (hit) {
+    // برخورد محکم و دقیق‌تر
+    const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
+    const currentSpeed = Math.sqrt(b.vx ** 2 + b.vy ** 2);
+    const newVy = -Math.sign(b.vy) * Math.abs(b.vy);
+    const newVx = offset * currentSpeed;
 
-      const cur = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-      if (cur > MAX_SPEED) { const f = MAX_SPEED / cur; b.vx *= f; b.vy *= f; }
+    b.vx = newVx;
+    b.vy = newVy;
 
-      if (i === 0) b.y = p.y + p.h + b.r + 0.1;
-      else b.y = p.y - b.r - 0.1;
-    }
+    // افزایش تدریجی سرعت بعد از هر برخورد
+    const boostedSpeed = Math.min(currentSpeed * 1.05, MAX_SPEED);
+    const factor = boostedSpeed / currentSpeed;
+    b.vx *= factor;
+    b.vy *= factor;
+
+    // تنظیم مجدد موقعیت برای جلوگیری از گیر کردن
+    if (i === 0) b.y = p.y + p.h + b.r + 0.1;
+    else b.y = p.y - b.r - 0.1;
   }
+}
+
+
 
   // score check with safety margin
   const SAFE_MARGIN = 10; // جلوگیری از reset زودرس
@@ -229,6 +243,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
