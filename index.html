@@ -2,57 +2,128 @@
 <html lang="fa">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
-<title>PingPong - Mohsen Forghani</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PingPong — Lobby & Game</title>
 <style>
-  html,body{height:100%;margin:0;padding:0;background:#000;color:#fff;font-family:tahoma, Arial;overflow:hidden;}
-  #gameCanvas{display:block;touch-action:none; margin:0 auto; background:#000;}
-  #scoreBox{position:absolute;top:10px;width:100%;text-align:center;font-size:24px;pointer-events:none;}
-  #statusText{position:absolute;bottom:14px;width:100%;text-align:center;font-size:14px;}
-  #menu{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);text-align:center;z-index:10;}
-  button{background:#222;top:60%;left:50%;color:#fff;border:1px solid #666;padding:10px 18px;margin:6px;font-size:16px;border-radius:8px;}
+  :root { --bg: #000; --fg: #fff; --blue: #1e90ff; --tile-size: 110px; }
+  html,body{height:100%;margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:tahoma, Arial;direction:rtl}
+  .app { display:flex; gap:12px; padding:12px; box-sizing:border-box; height:100%; }
+  .sidebar { width:360px; min-width:320px; max-width:420px; }
+  .header { margin-bottom:10px; }
+  .title { font-weight:700; font-size:18px; margin-bottom:6px; }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .input { flex:1; padding:8px; border-radius:6px; border:1px solid #333; background:#111; color:var(--fg); }
+  button { background:#222; color:var(--fg); border:1px solid #444; padding:8px 10px; border-radius:6px; cursor:pointer; }
+  button.small { padding:6px 8px; font-size:13px; }
+  .lobby { display:grid; grid-template-columns: repeat(2, 1fr); gap:10px; }
+  .room-tile { background:var(--blue); border-radius:8px; height:var(--tile-size); display:flex; flex-direction:column; justify-content:center; align-items:center; padding:8px; box-sizing:border-box; cursor:pointer; position:relative; }
+  .room-title { font-size:12px; font-weight:700; margin-bottom:6px; }
+  .room-sub { font-size:9px; } /* requested font size 9 */
+  .room-overlay { position:absolute; inset:0; border-radius:8px; background:linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15)); pointer-events:none; }
+  .status-line { font-size:11px; margin-top:6px; }
+  .menu-legend { margin-top:10px; font-size:12px; }
+  .center { text-align:center; }
+  canvas { background:#000; display:block; width:100%; height:calc(100vh - 40px); border:1px solid #111; border-radius:8px; touch-action:none; }
+  .game-controls { display:flex; gap:8px; margin-top:8px; }
+  .overlay { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); background:rgba(0,0,0,0.85); padding:16px; border-radius:10px; text-align:center; min-width:240px; z-index:40; }
+  .hidden { display:none; }
+  .small-muted { font-size:12px; color:#ccc; }
+  #statusText { font-size:13px; margin-top:8px; color:#ccc; }
+  .room-players { font-size:11px; margin-top:4px; }
 </style>
 </head>
 <body>
-<canvas id="gameCanvas"></canvas>
-<div id="scoreBox"></div>
-<div id="statusText"></div>
+<div class="app">
+  <div class="sidebar">
+    <div class="header">
+      <div class="title">PingPong — لابی</div>
+      <div class="row">
+        <input id="nameInput" class="input" placeholder="نام خود را وارد کنید (مثلاً: علی)" />
+        <button id="joinBtn">پیوستن</button>
+      </div>
+      <div id="statusText" class="small-muted">وضعیت: متصل نیست</div>
+    </div>
 
-<div id="menu">
-  <button id="wantBtn">من آماده بازی هستم</button>
-  <button id="startBtn" style="display:none">یک بازیکن آماده است. بازی شروع شود</button>
-  <button id="cancelBtn" style="display:none">لغو انتظار</button>
+    <div>
+      <div style="margin-bottom:6px;font-size:13px;font-weight:700">اتاق‌ها</div>
+      <div class="lobby" id="roomsGrid"></div>
+      <div class="menu-legend">حالت‌ها: <span style="color:#fff">در حال بازی</span> — <span style="color:#fff">اتاق در انتظار بازیکن دوم</span> — <span style="color:#fff">اتاق خالی</span></div>
+    </div>
+
+    <div style="margin-top:12px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:6px">عملیات</div>
+      <div class="row">
+        <button id="cancelRequestBtn" class="small" style="display:none">لغو درخواست</button>
+        <button id="leaveBtn" class="small" style="display:none">خروج از بازی</button>
+        <div style="flex:1"></div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:#bbb">
+        برای انجام بازی: ابتدا نام خود را وارد کنید، سپس یک اتاق را بزنید.
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1; position:relative;">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- overlay messages -->
+    <div id="gameOverlay" class="overlay hidden">
+      <div id="overlayText">در انتظار شروع...</div>
+      <div style="margin-top:12px">
+        <button id="rematchBtn" class="small" style="display:none">درخواست ری‌مچ</button>
+        <button id="acceptRematchBtn" class="small" style="display:none">قبول ری‌مچ</button>
+        <button id="closeOverlayBtn" class="small">بستن</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
-// CONFIG
-const WS_URL = 'wss://pingpong-te0t.onrender.com';
+/* ===================== Client config ===================== */
+const WS_URL = 'wss://pingpong-te0t.onrender.com'; // change if needed
 const LOGICAL_W = 450, LOGICAL_H = 800;
-const INTERP_MS = 50;
-const SEND_THROTTLE = 10;
+const INTERP_MS = 60;           // client interpolation delay (ms)
+const SEND_THROTTLE = 12;      // ms between paddle sends (match server throttle)
+const MAX_STATE_BUFFER = 12;
+
+/* ===================== UI elements ===================== */
+const nameInput = document.getElementById('nameInput');
+const joinBtn = document.getElementById('joinBtn');
+const statusText = document.getElementById('statusText');
+const roomsGrid = document.getElementById('roomsGrid');
+const cancelRequestBtn = document.getElementById('cancelRequestBtn');
+const leaveBtn = document.getElementById('leaveBtn');
+const gameOverlay = document.getElementById('gameOverlay');
+const overlayText = document.getElementById('overlayText');
+const rematchBtn = document.getElementById('rematchBtn');
+const acceptRematchBtn = document.getElementById('acceptRematchBtn');
+const closeOverlayBtn = document.getElementById('closeOverlayBtn');
 
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+/* ===================== state ===================== */
 let ws = null;
-let playerId = null;
-let gameStarted = false;
-let gameState = null;          // authoritative state from server
-let renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
-let renderPaddles = [{ x: LOGICAL_W/2-50, y:10 }, { x: LOGICAL_W/2-50, y:LOGICAL_H-30 }];
+let clientId = null;
+let playerName = null;
+let joined = false;
+let currentRoom = null;   // roomId if waiting or playing
+let inGame = false;
+let playerIndex = null;   // 0 or 1 assigned by server
+let gameState = null;     // last authoritative state object
+let stateBuffer = [];     // {ts, state}
 let lastSendTs = 0;
-let stateBuffer = [];
+let renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
+let renderPaddles = [{ x: LOGICAL_W/2-50, y:20 }, { x: LOGICAL_W/2-50, y:LOGICAL_H-50 }];
 
-// Canvas resize
+/* ================ canvas resize & input ================ */
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
-  const screenW = window.innerWidth;
-  const screenH = window.innerHeight;
+  const screenW = window.innerWidth - 400; // reserve sidebar
+  const screenH = window.innerHeight - 24;
   const gameRatio = LOGICAL_W / LOGICAL_H;
-  const screenRatio = screenW / screenH;
-
-  let renderW, renderH;
-  if (screenRatio > gameRatio) { renderH = screenH; renderW = renderH * gameRatio; }
+  let renderW = screenW, renderH = screenH;
+  if (screenW / screenH > gameRatio) { renderH = screenH; renderW = renderH * gameRatio; }
   else { renderW = screenW; renderH = renderW / gameRatio; }
 
   canvas.style.width = renderW + 'px';
@@ -64,7 +135,6 @@ function resizeCanvas() {
 window.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 
-// clientX -> logical X
 function clientXToLogical(clientX) {
   const ratio = window.devicePixelRatio || 1;
   const displayW = canvas.width / ratio;
@@ -74,66 +144,141 @@ function clientXToLogical(clientX) {
   return (clientX - offsetX) / scale;
 }
 
-// WebSocket connect
+/* ================= WebSocket connect/reconnect ================= */
+let reconnectDelay = 500;
 function connect() {
-  if (ws) ws.close();
+  if (ws) try { ws.close(); } catch(e){}
   ws = new WebSocket(WS_URL);
-  ws.onopen = () => console.log('Connected');
-  ws.onmessage = onMessage;
-  ws.onclose = () => setTimeout(connect, 1000);
+  ws.addEventListener('open', onOpen);
+  ws.addEventListener('message', onMessage);
+  ws.addEventListener('close', onClose);
+  ws.addEventListener('error', onError);
 }
 connect();
 
+function onOpen() {
+  statusText.innerText = 'وضعیت: متصل به سرور';
+  reconnectDelay = 500;
+  // if name already entered and joined before, re-send join
+  if (playerName) send({ type: 'join', name: playerName });
+}
+
+function onClose() {
+  statusText.innerText = 'قطع ارتباط — در تلاش برای بازسازی...';
+  setTimeout(connect, reconnectDelay);
+  reconnectDelay = Math.min(30000, reconnectDelay * 1.5);
+  inGame = false;
+}
+
+function onError() {
+  // noop
+}
+
+/* =================== send helper =================== */
 function send(obj) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify(obj));
+  try { ws.send(JSON.stringify(obj)); } catch(e){}
 }
 
-// Paddle sending with client prediction
-function sendPaddle(logicalX) {
-  const now = Date.now();
-  if (now - lastSendTs < SEND_THROTTLE) return;
-  lastSendTs = now;
-  const maxLeft = LOGICAL_W - 100;
-  const clamped = Math.max(0, Math.min(maxLeft, logicalX));
-  if (typeof playerId === 'number') renderPaddles[playerId].x = clamped;
-  send({ type: 'paddle', x: +clamped.toFixed(2) });
+/* =================== UI: build 10 rooms =================== */
+function buildRoomsUI() {
+  roomsGrid.innerHTML = '';
+  for (let i=0;i<10;i++){
+    const tile = document.createElement('div');
+    tile.className = 'room-tile';
+    tile.dataset.roomId = i;
+    tile.innerHTML = `<div class="room-title">اتاق ${i+1}</div>
+                      <div class="room-sub" id="room-sub-${i}">-</div>
+                      <div class="room-players" id="room-players-${i}"></div>
+                      <div class="room-overlay"></div>`;
+    roomsGrid.appendChild(tile);
+    tile.addEventListener('click', () => onRoomClicked(i));
+  }
 }
+buildRoomsUI();
 
-// Input
-document.addEventListener('mousemove', e => {
-  if (!gameStarted) return;
-  const lx = clientXToLogical(e.clientX);
-  sendPaddle(lx - 50);
+/* =================== lobby interactions =================== */
+joinBtn.addEventListener('click', () => {
+  const name = (nameInput.value || '').trim();
+  if (!name) { alert('لطفاً نام خود را وارد کنید'); nameInput.focus(); return; }
+  playerName = name;
+  send({ type: 'join', name: playerName });
+  joined = true;
+  statusText.innerText = `وضعیت: متصل — نام: ${playerName}`;
 });
-document.addEventListener('touchmove', e => {
-  if (!gameStarted) return;
-  e.preventDefault();
-  const lx = clientXToLogical(e.touches[0].clientX);
-  sendPaddle(lx - 50);
-}, {passive:false});
 
-// Interpolation
+function onRoomClicked(roomId) {
+  if (!joined) { alert('ابتدا نام خود را وارد کنید'); return; }
+  // request room (server will either mark waiting or start game if someone waiting)
+  send({ type: 'requestRoom', roomId });
+  // set tentative waiting UI
+  currentRoom = roomId;
+  cancelRequestBtn.style.display = 'inline-block';
+  leaveBtn.style.display = 'inline-block';
+  overlayText.innerText = `شما در حال درخواست اتاق ${roomId+1} هستید...`;
+  showOverlay(true);
+}
+
+/* cancel request */
+cancelRequestBtn.addEventListener('click', () => {
+  send({ type: 'cancelRequest' });
+  cancelRequestBtn.style.display = 'none';
+  overlayText.innerText = 'درخواست لغو شد';
+  showOverlay(false);
+});
+
+/* leave */
+leaveBtn.addEventListener('click', () => {
+  send({ type: 'leave' });
+  leaveBtn.style.display = 'none';
+  cancelRequestBtn.style.display = 'none';
+  currentRoom = null;
+  inGame = false;
+  playerIndex = null;
+  showOverlay(false);
+});
+
+/* overlay buttons */
+rematchBtn.addEventListener('click', () => {
+  if (inGame && ws && ws.readyState === WebSocket.OPEN) {
+    send({ type: 'rematchRequest' });
+    rematchBtn.style.display = 'none';
+    overlayText.innerText = 'درخواست ری‌مچ ارسال شد — در انتظار حریف...';
+  }
+});
+acceptRematchBtn.addEventListener('click', () => {
+  send({ type: 'rematchRequest' });
+  acceptRematchBtn.style.display = 'none';
+  overlayText.innerText = 'شما ری‌مچ را پذیرفتید.';
+});
+closeOverlayBtn.addEventListener('click', () => showOverlay(false));
+
+function showOverlay(show=true) {
+  gameOverlay.classList.toggle('hidden', !show);
+}
+
+/* ===================== drawing & interpolation ===================== */
 function interpolateState(renderTs) {
   if (stateBuffer.length === 0) return null;
+  // find pair
   let i = 0;
   while (i < stateBuffer.length && stateBuffer[i].ts <= renderTs) i++;
   if (i === 0) return stateBuffer[0].state;
-  if (i >= stateBuffer.length) return stateBuffer[stateBuffer.length - 1].state;
+  if (i >= stateBuffer.length) return stateBuffer[stateBuffer.length-1].state;
   const a = stateBuffer[i-1], b = stateBuffer[i];
   const t = (renderTs - a.ts) / Math.max(1, (b.ts - a.ts));
-  const lerp = (v0, v1, t) => v0 + (v1 - v0) * t;
+  const lerp = (v0,v1,t) => v0 + (v1 - v0) * t;
   return {
     ball: { x: lerp(a.state.ball.x, b.state.ball.x, t), y: lerp(a.state.ball.y, b.state.ball.y, t), r: a.state.ball.r },
     paddles: [
       { x: lerp(a.state.paddles[0].x, b.state.paddles[0].x, t), y: a.state.paddles[0].y, w: a.state.paddles[0].w, h: a.state.paddles[0].h },
       { x: lerp(a.state.paddles[1].x, b.state.paddles[1].x, t), y: a.state.paddles[1].y, w: a.state.paddles[1].w, h: a.state.paddles[1].h }
     ],
-    scores: a.state.scores
+    scores: a.state.scores,
+    players: a.state.players
   };
 }
 
-// Render loop
 function drawLoop() {
   const ratio = window.devicePixelRatio || 1;
   const displayW = canvas.width / ratio;
@@ -146,37 +291,37 @@ function drawLoop() {
   const offsetY = (displayH - LOGICAL_H * scaleY) / 2;
 
   const renderTs = Date.now() - INTERP_MS;
-  let drawState = gameState ? interpolateState(renderTs) : null;
+  const drawState = gameState ? interpolateState(renderTs) : null;
 
   if (drawState) {
+    // ball
     renderBall.x = drawState.ball.x;
     renderBall.y = drawState.ball.y;
-
-    // draw ball
     ctx.fillStyle = '#fff';
     ctx.beginPath();
     ctx.arc(offsetX + renderBall.x * scaleX, offsetY + renderBall.y * scaleY,
             Math.max(2, drawState.ball.r * Math.min(scaleX, scaleY)), 0, Math.PI*2);
     ctx.fill();
 
-    // draw paddles
-    drawState.paddles.forEach((p, i) => {
-      if (typeof playerId === 'number' && i === playerId) {
-        // predicted paddle
-        renderPaddles[i].x += (renderPaddles[i].x - renderPaddles[i].x) * 0;
+    // paddles
+    drawState.paddles.forEach((p,i) => {
+      if (typeof playerIndex === 'number' && i === playerIndex) {
+        // predicted paddle already in renderPaddles
+        renderPaddles[i].x += (renderPaddles[i].x - renderPaddles[i].x) * 0; // noop
       } else {
-        renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.28;
+        renderPaddles[i].x += (p.x - renderPaddles[i].x) * 0.28; // smooth opponent
       }
       renderPaddles[i].y = p.y;
       ctx.fillRect(offsetX + renderPaddles[i].x * scaleX, offsetY + renderPaddles[i].y * scaleY,
                    p.w * scaleX, p.h * scaleY);
     });
 
-    // draw score
+    // scores
     ctx.fillStyle = '#fff';
     ctx.font = `${Math.max(12, Math.round(20 * Math.min(scaleX, scaleY)))}px Tahoma`;
     ctx.textAlign = 'center';
     ctx.fillText(`${drawState.scores[0]} - ${drawState.scores[1]}`, displayW/2, offsetY + 26);
+
   } else {
     ctx.fillStyle = '#fff';
     ctx.font = '16px Tahoma';
@@ -188,61 +333,200 @@ function drawLoop() {
 }
 requestAnimationFrame(drawLoop);
 
-// Menu buttons
-document.getElementById('wantBtn').onclick = () => {
-    send({ type: 'waitForPlayer' });
-    document.getElementById('wantBtn').style.display = 'none';
-    document.getElementById('cancelBtn').style.display = 'inline-block';
-};
+/* =================== input -> send paddle =================== */
+function sendPaddleLogical(logicalX) {
+  if (!inGame) return;
+  const nowTs = Date.now();
+  if (nowTs - lastSendTs < SEND_THROTTLE) return;
+  lastSendTs = nowTs;
+  const maxLeft = LOGICAL_W - 100;
+  const clamped = Math.max(0, Math.min(maxLeft, logicalX));
+  // local prediction:
+  if (typeof playerIndex === 'number') renderPaddles[playerIndex].x = clamped;
+  send({ type: 'paddle', x: +clamped.toFixed(2) });
+}
 
-document.getElementById('cancelBtn').onclick = () => {
-    send({ type: 'cancelWait' });
-    document.getElementById('wantBtn').style.display = 'inline-block';
-    document.getElementById('cancelBtn').style.display = 'none';
-};
+document.addEventListener('mousemove', e => {
+  if (!inGame) return;
+  const lx = clientXToLogical(e.clientX);
+  sendPaddleLogical(lx - 50);
+});
+document.addEventListener('touchstart', e => { if (!inGame) return; e.preventDefault(); const lx = clientXToLogical(e.touches[0].clientX); sendPaddleLogical(lx - 50); }, {passive:false});
+document.addEventListener('touchmove', e => { if (!inGame) return; e.preventDefault(); const lx = clientXToLogical(e.touches[0].clientX); sendPaddleLogical(lx - 50); }, {passive:false});
 
-document.getElementById('startBtn').onclick = () => {
-    send({ type: 'acceptMatch' });
-    document.getElementById('startBtn').style.display = 'none';
-};
+/* =================== handle incoming messages =================== */
+function updateRoomTile(room) {
+  // room = { roomId, status, label, waitingName?, players?, scores? }
+  const idx = room.roomId;
+  const sub = document.getElementById(`room-sub-${idx}`);
+  const playersDiv = document.getElementById(`room-players-${idx}`);
+  if (!sub || !playersDiv) return;
+  if (room.status === 'empty') {
+    sub.innerText = 'اتاق خالی';
+    playersDiv.innerText = '';
+  } else if (room.status === 'waiting') {
+    sub.innerText = 'اتاق در انتظار بازیکن دوم';
+    playersDiv.innerText = room.waitingName ? `در انتظار: ${room.waitingName}` : '';
+  } else if (room.status === 'playing') {
+    sub.innerText = 'در حال بازی';
+    const p0 = room.players && room.players[0] ? room.players[0] : '...';
+    const p1 = room.players && room.players[1] ? room.players[1] : '...';
+    const s0 = room.scores ? room.scores[0] : '-';
+    const s1 = room.scores ? room.scores[1] : '-';
+    playersDiv.innerText = `${p0} ${s0} : ${s1} ${p1}`;
+  }
+}
 
-// Handle server messages
 function onMessage(e) {
   let data;
   try { data = JSON.parse(e.data); } catch { return; }
   const t = data.type;
 
-  if (t === 'assign') playerId = data.playerId;
-  if (t === 'start') gameStarted = true;
+  if (t === 'assigned') {
+    clientId = data.clientId;
+    statusText.innerText = `وضعیت: متصل (شناسه: ${clientId})`;
+    return;
+  }
+
+  if (t === 'joined') {
+    // server confirmed join
+    statusText.innerText = `وضعیت: ${data.name} — آماده`;
+    return;
+  }
+
+  if (t === 'lobbySnapshot') {
+    // update UI tiles
+    (data.rooms || []).forEach(r => updateRoomTile(r));
+    return;
+  }
+
+  if (t === 'roomRequested') {
+    // server acknowledged our request
+    currentRoom = data.roomId;
+    cancelRequestBtn.style.display = 'inline-block';
+    leaveBtn.style.display = 'inline-block';
+    overlayText.innerText = `شما در صف اتاق ${currentRoom+1} هستید`;
+    showOverlay(true);
+    return;
+  }
+
+  if (t === 'requestCancelled') {
+    cancelRequestBtn.style.display = 'none';
+    overlayText.innerText = 'درخواست لغو شد';
+    setTimeout(()=> showOverlay(false), 800);
+    return;
+  }
+
+  if (t === 'start') {
+    // server tells game started; contains playerIndex (0 or 1)
+    inGame = true;
+    playerIndex = data.playerIndex;
+    currentRoom = data.roomId;
+    overlayText.innerText = 'بازی شروع شد';
+    showOverlay(false);
+    rematchBtn.style.display = 'none';
+    acceptRematchBtn.style.display = 'none';
+    // clear state buffer
+    stateBuffer = [];
+    gameState = null;
+    renderBall = { x: LOGICAL_W/2, y: LOGICAL_H/2 };
+    renderPaddles = [{ x: LOGICAL_W/2-50, y:20 }, { x: LOGICAL_W/2-50, y:LOGICAL_H-50 }];
+    return;
+  }
 
   if (t === 'state') {
     const s = data.state;
-    const serverTs = data.meta?.ts || Date.now();
+    if (!s) return;
+    const serverTs = (data.meta && data.meta.ts) ? data.meta.ts : Date.now();
+
+    // clear buffer on large jump (reset)
+    const last = stateBuffer.length ? stateBuffer[stateBuffer.length-1].state.ball : null;
+    if (last && Math.abs(last.y - s.ball.y) > 120) stateBuffer = [];
+
     stateBuffer.push({ ts: serverTs, state: s });
-    while (stateBuffer.length > 10) stateBuffer.shift();
+    while (stateBuffer.length > MAX_STATE_BUFFER) stateBuffer.shift();
     gameState = s;
+    return;
   }
 
-  if (t === 'lobby') {
-    if (data.status === 'no_waiting') {
-        document.getElementById('statusText').innerText = 'هیچ بازیکنی منتظر نیست';
-        document.getElementById('wantBtn').style.display = 'inline-block';
-        document.getElementById('cancelBtn').style.display = 'none';
-        document.getElementById('startBtn').style.display = 'none';
-    } else if (data.status === 'waiting_for_opponent') {
-        document.getElementById('statusText').innerText = 'منتظر بازیکن دیگر...';
-        document.getElementById('wantBtn').style.display = 'none';
-        document.getElementById('cancelBtn').style.display = 'inline-block';
-        document.getElementById('startBtn').style.display = 'none';
-    } else if (data.status === 'someone_waiting') {
-        document.getElementById('statusText').innerText = 'یک بازیکن منتظر است. بازی را شروع کنید.';
-        if (playerId !== null) document.getElementById('startBtn').style.display = 'inline-block';
-    }
+  if (t === 'gameover') {
+    // show overlay with winner and rematch option
+    inGame = false;
+    const winner = data.winner; // index
+    const scores = data.scores || [0,0];
+    const meWon = (typeof playerIndex === 'number' && winner === playerIndex);
+    overlayText.innerHTML = `بازی تمام شد<br/>نتیجه: ${scores[0]} - ${scores[1]}<br/>${meWon ? 'تبریک، شما برنده‌اید' : 'بازیکن مقابل برنده شد'}`;
+    rematchBtn.style.display = 'inline-block';
+    acceptRematchBtn.style.display = 'none';
+    showOverlay(true);
+    return;
   }
 
-  if (t === 'ping') send({ type: 'pong', ts: Date.now() });
+  if (t === 'rematchRequested') {
+    // opponent asked for rematch — offer accept button
+    overlayText.innerText = 'حریف درخواست ری‌مچ داده است. قبول می‌کنید؟';
+    acceptRematchBtn.style.display = 'inline-block';
+    rematchBtn.style.display = 'none';
+    showOverlay(true);
+    return;
+  }
+
+  if (t === 'rematchAccepted') {
+    // both accepted and rematch started
+    overlayText.innerText = 'ری‌مچ پذیرفته شد — بازی در حال شروع';
+    acceptRematchBtn.style.display = 'none';
+    rematchBtn.style.display = 'none';
+    setTimeout(()=> showOverlay(false), 800);
+    return;
+  }
+
+  if (t === 'opponent_left') {
+    overlayText.innerText = 'حریف بازی را ترک کرد';
+    rematchBtn.style.display = 'none';
+    acceptRematchBtn.style.display = 'none';
+    showOverlay(true);
+    inGame = false;
+    return;
+  }
+
+  if (t === 'stopped') {
+    overlayText.innerText = 'بازی متوقف شد';
+    showOverlay(true);
+    inGame = false;
+    return;
+  }
+
+  if (t === 'error') {
+    alert('خطا: ' + (data.message || 'خطای ناشناخته'));
+    return;
+  }
+
+  if (t === 'ping') {
+    // reply pong
+    send({ type: 'pong', ts: Date.now() });
+    return;
+  }
+
+  // other messages ignored
 }
-</script>
 
+/* attach WS msg handler */
+if (ws) ws.onmessage = onMessage;
+
+/* When ws object replaced on reconnect, reattach */
+function setWsHandlers() {
+  if (!ws) return;
+  ws.onmessage = onMessage;
+}
+setInterval(() => { if (ws) setWsHandlers(); }, 1000);
+
+/* =================== periodic UI refresh for lobby every 10s fallback =================== */
+setInterval(() => {
+  // request explicit lobby snapshot if server didn't push recently
+  send({ type: 'requestLobby' }); // server may ignore unknown type but safe
+}, 10000);
+
+/* ===================== end ===================== */
+</script>
 </body>
 </html>
