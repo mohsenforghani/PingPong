@@ -66,6 +66,20 @@ const tiles = document.querySelectorAll('.roomTile');
 let ws;
 let myName = null;
 
+
+    function startGame() {
+    // مخفی کردن صفحه لابی
+    document.getElementById('lobbyContainer').style.display = 'none';
+
+    // نمایش بازی
+    document.getElementById('gameCanvas').style.display = 'block';
+    
+    // در اینجا می‌توانید بازی را شروع کنید
+        console.log("صفحه بازی در حال باز شدن است...");
+    window.open('game.html', '_blank');
+}
+
+    
 function connectWS() {
     ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
     
@@ -143,5 +157,6 @@ connectWS();
 </script>
 </body>
 </html>
+
 
 
