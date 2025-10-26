@@ -150,6 +150,7 @@ function checkGameOver(roomId) {
 wss.on('connection', ws => {
     ws._meta = { name: null, roomId: null, missedPongs: 0 };
 
+    // وقتی که از کلاینت درخواست نام می‌شود
     send(ws, { type: 'requestName', message: 'لطفاً نام خود را وارد کنید' });
 
     ws.on('message', msg => {
@@ -158,6 +159,7 @@ wss.on('connection', ws => {
 
         switch (data.type) {
             case 'setName':
+                // ذخیره نام بازیکن
                 ws._meta.name = data.name;
                 send(ws, { type: 'joined', name: data.name });
                 broadcastLobby();
@@ -175,12 +177,14 @@ wss.on('connection', ws => {
                     send(ws, { type: 'roomRequested', roomId: rid });
                     broadcastLobby();
                 } else if (room.status === 'waiting') {
+                    // اگر بازیکن دوم وارد شود، بازی شروع می‌شود
                     room.status = 'playing';
                     room.player2 = { ws, name: ws._meta.name, paddleX: GAME_W / 2 - 50 };
                     ws._meta.roomId = rid;
                     room.scores = [0, 0];
                     resetBall(room);
 
+                    // شروع بازی برای هر دو بازیکن
                     send(room.player1.ws, { type: 'start', playerIndex: 0, roomId: rid });
                     send(room.player2.ws, { type: 'start', playerIndex: 1, roomId: rid });
 
@@ -235,3 +239,5 @@ wss.on('connection', ws => {
         broadcastLobby();
     });
 });
+
+
