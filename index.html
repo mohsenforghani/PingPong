@@ -67,7 +67,7 @@ let ws;
 let myName = null;
 
 function connectWS() {
-    ws = new WebSocket(`ws://${location.host}`);
+    ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
     ws.onopen = ()=> { statusBar.innerText='وضعیت: متصل'; requestName(); };
     ws.onclose = ()=> { statusBar.innerText='وضعیت: قطع اتصال'; setTimeout(connectWS,2000); };
     ws.onmessage = e => {
@@ -125,3 +125,4 @@ connectWS();
 </script>
 </body>
 </html>
+
