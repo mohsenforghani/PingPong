@@ -20,7 +20,7 @@
 
 <div id="menu">
   <button id="wantBtn">من آماده بازی هستم</button>
-  <button id="startBtn" style="display:none"> یک لازیکن آمادگی خود را اعلام کرد.بازی شروع شود</button>
+  <button id="startBtn" style="display:none"> یک بازیکن آمادگی خود را اعلام کرد.بازی شروع شود</button>
   <button id="cancelBtn" style="display:none">لغو انتظار</button>
 </div>
 
@@ -28,7 +28,7 @@
 /* CONFIG */
 const WS_URL = 'wss://pingpong-te0t.onrender.com'; // set your server
 const LOGICAL_W = 450, LOGICAL_H = 800;
-const INTERP_MS = 60;           // client-side interpolation delay
+const INTERP_MS = 100;           // client-side interpolation delay
 const SEND_THROTTLE = 40;      // ms between paddle sends
 const RECONNECT_BASE = 500;    // reconnect backoff base ms
 const MAX_RECONNECT = 30000;
@@ -361,6 +361,7 @@ connect();
 </script>
 </body>
 </html>
+
 
 
 
