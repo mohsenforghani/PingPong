@@ -32,17 +32,6 @@ const state = {
   scores: [0, 0]
 };
 
-// reset ball
-//function resetBall() {
- // state.ball.x = GAME_W / 2;
-//  state.ball.y = GAME_H / 2;
-//  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6);
-//  const dir = Math.random() < 0.5 ? 1 : -1;
-//  state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
-//  state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
-//}
-
-
 
 // send JSON with meta
 function send(ws, obj) {
@@ -240,6 +229,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
