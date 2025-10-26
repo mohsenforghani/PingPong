@@ -89,7 +89,7 @@
     let score1 = 0, score2 = 0;
     let player1Name = '', player2Name = '';
     let isGameOver = false;
-    let roomId = null; // شناسه اتاق که از سرور دریافت می‌شود
+    let currentRoomId = null;
 
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
@@ -102,17 +102,17 @@
     const PADDLE_SPEED = 10;
     const BALL_SPEED = 5;
 
-    // اتصال به سرور WebSocket
     function connectWS() {
         ws = new WebSocket(`wss://pingpong-te0t.onrender.com`);
-        ws.onopen = () => {
-            console.log('Connected to server');
+        
+        ws.onopen = () => { 
+            console.log('Connected to server'); 
         };
 
-        ws.onmessage = (e) => {
+        ws.onmessage = e => {
             const data = JSON.parse(e.data);
 
-            switch (data.type) {
+            switch(data.type) {
                 case 'state':
                     updateGameState(data.state);
                     break;
@@ -120,21 +120,22 @@
                     handleGameOver(data.scores, data.winner);
                     break;
                 case 'rematchRequested':
-                    if (confirm('آیا مایل به شروع دوباره بازی هستید؟')) {
-                        ws.send(JSON.stringify({ type: 'rematch', roomId: roomId }));
+                    if(confirm('آیا مایل به شروع دوباره بازی هستید؟')) {
+                        ws.send(JSON.stringify({ type: 'rematch', roomId: currentRoomId }));
                     }
                     break;
                 case 'rematchAccepted':
                     startNewGame();
                     break;
                 case 'start':
-                    roomId = data.roomId; // ذخیره شناسه اتاق
+                    // بازی شروع می‌شود وقتی وضعیت از سمت سرور ارسال می‌شود
+                    currentRoomId = data.roomId;
+                    startNewGame();
                     break;
             }
         };
     }
 
-    // به روز رسانی وضعیت بازی
     function updateGameState(state) {
         ball = state.ball;
         paddle1 = state.paddles[0];
@@ -149,24 +150,23 @@
         renderGame();
     }
 
-    // رسم وضعیت بازی در صفحه
     function renderGame() {
         ctx.clearRect(0, 0, GAME_W, GAME_H);
 
-        // رسم پدل‌ها
+        // Draw paddles
         ctx.fillStyle = 'red';
         ctx.fillRect(paddle1.x - PADDLE_WIDTH / 2, paddle1.y, PADDLE_WIDTH, PADDLE_HEIGHT);
 
         ctx.fillStyle = 'blue';
         ctx.fillRect(paddle2.x - PADDLE_WIDTH / 2, paddle2.y, PADDLE_WIDTH, PADDLE_HEIGHT);
 
-        // رسم توپ
+        // Draw ball
         ctx.fillStyle = '#fff';
         ctx.beginPath();
         ctx.arc(ball.x, ball.y, BALL_RADIUS, 0, Math.PI * 2);
         ctx.fill();
 
-        // رسم امتیاز
+        // Draw score
         score1El.textContent = score1;
         score2El.textContent = score2;
 
@@ -181,46 +181,40 @@
         }
     }
 
-    // زمانی که بازی تمام می‌شود
     function handleGameOver(scores, winner) {
         isGameOver = true;
         score1 = scores[0];
         score2 = scores[1];
         renderGame();
-        setTimeout(() => {
-            rematchBtn.style.display = 'block';
-        }, 1000);
     }
 
-    // درخواست ری‌مچ
     rematchBtn.addEventListener('click', () => {
-        ws.send(JSON.stringify({ type: 'rematch', roomId: roomId }));
+        ws.send(JSON.stringify({ type: 'rematch', roomId: currentRoomId }));
         startNewGame();
     });
 
-    // شروع بازی جدید
     function startNewGame() {
         score1 = 0;
         score2 = 0;
         isGameOver = false;
         rematchBtn.style.display = 'none';
-        ws.send(JSON.stringify({ type: 'start', roomId: roomId }));
+        ws.send(JSON.stringify({ type: 'start', roomId: currentRoomId }));
     }
 
-    // اتصال به سرور
-    connectWS();
-
-    // مدیریت حرکت پدل با موس
+    // حرکت پدال‌ها با موس
     canvas.addEventListener('mousemove', (e) => {
         const x = e.clientX;
-        ws.send(JSON.stringify({ type: 'paddle', x: x, roomId: roomId }));
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'paddle', x: x }));
+        }
     });
 
-    // تنظیم اندازه صفحه
     window.addEventListener('resize', () => {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
     });
+
+    connectWS();
 </script>
 
 </body>
