@@ -10,8 +10,8 @@ const GAME_H = 800;
 const TICK_HZ =   100;
 const SEND_RATE = 40;
 const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
-const MAX_SPEED = 8;
-const BASE_BALL_SPEED = 12;
+const MAX_SPEED = 6;
+const BASE_BALL_SPEED = 10;
 const HEARTBEAT_MS = 10000;
 const MAX_MISSED_PONG = 3;
 
@@ -239,6 +239,7 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
 
