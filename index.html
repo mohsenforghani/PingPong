@@ -313,8 +313,8 @@ function drawLoop() {
    // smooth renderBall toward interpolated ball (extra smoothing)
    //renderBall.x = drawState.ball.x;
    // renderBall.y = drawState.ball.y;
-   renderBall.x += (drawState.ball.x - renderBall.x) * 0.25;
-   renderBall.y += (drawState.ball.y - renderBall.y) * 0.25;
+   renderBall.x += (drawState.ball.x - renderBall.x) * 0.03;
+   renderBall.y += (drawState.ball.y - renderBall.y) * 0.03;
 
     
     // draw ball
@@ -375,6 +375,7 @@ connect();
 </script>
 </body>
 </html>
+
 
 
 
