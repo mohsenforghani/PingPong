@@ -1,170 +1,108 @@
-// Importing required modules
 const WebSocket = require('ws');
-const config = require('./config'); // Importing configuration file
+const { createLobby, joinLobby, updateLobby, removePlayerFromLobby, getLobbySnapshot } = require('./config');
 
-// Setup WebSocket server
-const wss = new WebSocket.Server({ port: config.SERVER_PORT });
-console.log(`Server is running on ws://localhost:${config.SERVER_PORT}`);
+const wss = new WebSocket.Server({ port: 8080 });
 
-// Variables for managing rooms and players
-let rooms = [];  // List to keep track of rooms and their statuses
+const rooms = Array.from({ length: 10 }).map(() => ({ status: 'empty', player1: null, player2: null, scores: [0, 0] }));
 
-// Initialize rooms
-for (let i = 0; i < config.MAX_ROOMS; i++) {
-  rooms.push({
-    id: i,
-    player1: null,
-    player2: null,
-    status: 'empty', // 'empty', 'waiting', 'playing'
-    scores: [0, 0]
-  });
-}
-
-// Handle incoming WebSocket connections
 wss.on('connection', (ws) => {
-  let currentRoom = null;
-  let clientId = Date.now();  // Generate a simple unique client ID
-  let playerName = 'Unknown';  // Default name until the player sets it
+    let clientId = null;
+    let currentRoom = null;
+    let playerName = '';
+    let isPlaying = false;
 
-  console.log(`Client ${clientId} connected`);
+    ws.on('message', (message) => {
+        const data = JSON.parse(message);
+        const { type } = data;
 
-  // Send assigned client ID
-  ws.send(JSON.stringify({ type: 'assigned', clientId }));
+        if (type === 'setName') {
+            playerName = data.name;
+            clientId = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}`; // Random unique clientId
+            ws.send(JSON.stringify({ type: 'assigned', clientId }));
+            return;
+        }
 
-  // Handle incoming messages from client
-  ws.on('message', (message) => {
-    let data;
-    try {
-      data = JSON.parse(message);
-    } catch (e) {
-      return;
-    }
+        if (type === 'requestRoom') {
+            currentRoom = data.roomId;
+            if (rooms[currentRoom].status === 'empty') {
+                rooms[currentRoom].status = 'waiting';
+                rooms[currentRoom].player1 = { name: playerName, id: clientId };
+                updateLobby();
+                ws.send(JSON.stringify({ type: 'roomRequested', roomId: currentRoom }));
+            } else if (rooms[currentRoom].status === 'waiting') {
+                rooms[currentRoom].status = 'playing';
+                rooms[currentRoom].player2 = { name: playerName, id: clientId };
+                rooms[currentRoom].scores = [0, 0];
+                startGame(currentRoom);
+                ws.send(JSON.stringify({ type: 'start', roomId: currentRoom, playerIndex: 1 }));
+            } else {
+                ws.send(JSON.stringify({ type: 'error', message: 'Room already in use' }));
+            }
+        }
 
-    const { type, roomId, name } = data;
+        if (type === 'requestCancelled') {
+            rooms[currentRoom].status = 'empty';
+            rooms[currentRoom].player1 = null;
+            rooms[currentRoom].player2 = null;
+            updateLobby();
+            ws.send(JSON.stringify({ type: 'requestCancelled' }));
+        }
 
-    if (type === 'setName') {
-      playerName = name;
-      console.log(`Player ${clientId} set their name to: ${name}`);
-      ws.send(JSON.stringify({ type: 'joined', name }));
-      return;
-    }
+        if (type === 'rematchRequested') {
+            if (rooms[currentRoom].player1.id === clientId || rooms[currentRoom].player2.id === clientId) {
+                ws.send(JSON.stringify({ type: 'rematchRequested', roomId: currentRoom }));
+            }
+        }
 
-    if (type === 'requestLobby') {
-      // Send a snapshot of all the rooms
-      ws.send(JSON.stringify({
-        type: 'lobbySnapshot',
-        rooms: rooms.map((room) => ({
-          id: room.id,
-          status: room.status,
-          player1: room.player1 ? room.player1.name : null,
-          player2: room.player2 ? room.player2.name : null,
-          scores: room.scores,
-        }))
-      }));
-      return;
-    }
+        if (type === 'rematchAccepted') {
+            ws.send(JSON.stringify({ type: 'rematchAccepted', roomId: currentRoom }));
+            startGame(currentRoom);
+        }
 
-    if (type === 'requestRoom') {
-      // Handle player requesting a room to join
-      if (rooms[roomId].status === 'empty') {
-        rooms[roomId].status = 'waiting';
-        rooms[roomId].player1 = { id: clientId, name: playerName };
-        ws.send(JSON.stringify({ type: 'roomRequested', roomId }));
-        return;
-      }
+        if (type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
+        }
 
-      if (rooms[roomId].status === 'waiting' && rooms[roomId].player1.id !== clientId) {
-        // Room is waiting for a second player, join the room
-        rooms[roomId].status = 'playing';
-        rooms[roomId].player2 = { id: clientId, name: playerName };
+        // Handle ball and paddle movement (game state updates)
+        if (isPlaying) {
+            const gameState = data.state;
+            updateGame(currentRoom, gameState);
+        }
+    });
+
+    ws.on('close', () => {
+        // Cleanup on client disconnect
+        if (currentRoom !== null) {
+            removePlayerFromLobby(currentRoom, clientId);
+        }
+    });
+
+    function startGame(roomId) {
+        isPlaying = true;
+        rooms[roomId].scores = [0, 0];
         ws.send(JSON.stringify({ type: 'start', roomId, playerIndex: 1 }));
+    }
 
-        // Notify the first player that the second player has joined
+    function updateGame(roomId, gameState) {
+        if (!gameState) return;
+        rooms[roomId].scores = gameState.scores;
+        ws.send(JSON.stringify({ type: 'state', roomId, state: gameState }));
+    }
+
+    function updateLobby() {
+        const snapshot = rooms.map((room, index) => ({
+            id: index,
+            status: room.status,
+            player1: room.player1,
+            player2: room.player2,
+            scores: room.scores,
+        }));
         wss.clients.forEach((client) => {
-          if (client !== ws && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'start', roomId, playerIndex: 0 }));
-          }
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({ type: 'lobbySnapshot', rooms: snapshot }));
+            }
         });
-      }
-      return;
     }
-
-    if (type === 'gameState') {
-      // Update game state (ball position, paddles, etc.)
-      if (rooms[roomId].status === 'playing') {
-        rooms[roomId].scores = data.scores;  // Update the scores
-        // Broadcast the game state to both players
-        wss.clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-              type: 'state',
-              roomId,
-              state: data.state,
-              scores: rooms[roomId].scores
-            }));
-          }
-        });
-      }
-      return;
-    }
-
-    if (type === 'gameOver') {
-      // Handle game over
-      const winner = data.winner;
-      const room = rooms[roomId];
-      room.status = 'empty'; // Reset room status
-      room.player1 = null;
-      room.player2 = null;
-
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: 'gameover',
-            winner,
-            scores: room.scores
-          }));
-        }
-      });
-      return;
-    }
-
-    if (type === 'rematchRequested') {
-      // Handle rematch request
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({ type: 'rematchRequested' }));
-        }
-      });
-      return;
-    }
-
-    if (type === 'rematchAccepted') {
-      // Handle rematch acceptance
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({ type: 'rematchAccepted' }));
-        }
-      });
-      return;
-    }
-
-    if (type === 'leaveRoom') {
-      // Player leaves the room
-      rooms[roomId].status = 'empty';
-      rooms[roomId].player1 = null;
-      rooms[roomId].player2 = null;
-      wss.clients.forEach((client) => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({ type: 'opponent_left' }));
-        }
-      });
-      return;
-    }
-  });
-
-  // Handle connection close
-  ws.on('close', () => {
-    console.log(`Client ${clientId} disconnected`);
-    // Handle disconnection logic here if necessary (e.g., cleaning up rooms)
-  });
 });
+
+console.log('Server running on ws://localhost:8080');
