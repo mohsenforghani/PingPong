@@ -7,33 +7,26 @@ const wss = new WebSocket.Server({ port: PORT });
 
 const GAME_W = 450;
 const GAME_H = 800;
-const TICK_HZ =   100;
-const SEND_RATE = 40;
-const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
-const MAX_SPEED = 6;
+const TICK_HZ = 100;
+const MAX_SPEED = 12;
 const BASE_BALL_SPEED = 10;
 const HEARTBEAT_MS = 10000;
 const MAX_MISSED_PONG = 3;
 
 console.log('WebSocket server running on port', PORT);
 
-// server state
+// --- server state ---
 let players = [null, null];   // [ws, ws]
 let waitingPlayerId = null;
-let gameStarted = false;
 let seq = 0;
 
-const state = {
-  ball: { x: GAME_W / 2, y: GAME_H / 2, vx: BASE_BALL_SPEED, vy: BASE_BALL_SPEED, r: 15 },
-  paddles: [
-    { x: GAME_W / 2 - 50, y: 20, w: 100, h: 20 },
-    { x: GAME_W / 2 - 50, y: GAME_H - 50, w: 100, h: 20 }
-  ],
-  scores: [0, 0]
-};
+let games = {}; // gameId -> { players: [ws1, ws2], state, loop }
 
+// --- helper functions ---
+function generateGameId() {
+  return Math.random().toString(36).substr(2, 9);
+}
 
-// send JSON with meta
 function send(ws, obj) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   if (!obj.meta) obj.meta = {};
@@ -42,27 +35,55 @@ function send(ws, obj) {
   ws.send(JSON.stringify(obj));
 }
 
-// broadcast
 function broadcast(obj) {
   const payload = JSON.stringify(Object.assign({}, obj, { meta: { seq: ++seq, ts: Date.now() } }));
   players.forEach(p => { if (p && p.readyState === WebSocket.OPEN) p.send(payload); });
 }
 
-// ball reset function
-function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
+// --- game creation ---
+function createGame(player1, player2) {
+  const gameId = generateGameId();
+  const state = {
+    ball: { x: GAME_W / 2, y: GAME_H / 2, vx: BASE_BALL_SPEED, vy: BASE_BALL_SPEED, r: 15 },
+    paddles: [
+      { x: GAME_W / 2 - 50, y: 20, w: 100, h: 20 },
+      { x: GAME_W / 2 - 50, y: GAME_H - 50, w: 100, h: 20 }
+    ],
+    scores: [0, 0]
+  };
+  games[gameId] = { players: [player1, player2], state, loop: null };
+  return gameId;
+}
+
+function resetBall(state, towardsPlayer = 1) { 
   state.ball.x = GAME_W / 2;
   state.ball.y = GAME_H / 2;
-  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6); // زاویه کوچک
+  const ang = (Math.random() * Math.PI / 3) - (Math.PI / 6); 
   const dir = (towardsPlayer === 1) ? 1 : -1;
   state.ball.vx = BASE_BALL_SPEED * Math.sin(ang);
   state.ball.vy = dir * BASE_BALL_SPEED * Math.cos(ang);
 }
 
-let tickCount = 0;
-function tick() {
-  if (!gameStarted) return;
+function broadcastGameState(game) {
+  const state = game.state;
+  const payload = {
+    type: 'state',
+    state: {
+      ball: { x: +state.ball.x.toFixed(2), y: +state.ball.y.toFixed(2), r: state.ball.r },
+      paddles: state.paddles.map(p => ({ x: +p.x.toFixed(2), y: p.y, w: p.w, h: p.h })),
+      scores: state.scores
+    },
+    meta: { ts: Date.now() }
+  };
+  game.players.forEach(ws => send(ws, payload));
+}
 
+// --- gameloop ---
+function gameLoop(game) {
+  const state = game.state;
   const b = state.ball;
+
+  // update ball
   b.x += b.vx;
   b.y += b.vy;
 
@@ -72,62 +93,44 @@ function tick() {
 
   // paddle collisions
   for (let i = 0; i < 2; i++) {
-  const p = state.paddles[i];
-  const PADDLE_MARGIN = 10;
-  const hit = b.y + b.r > p.y - PADDLE_MARGIN && b.y - b.r < p.y + p.h + PADDLE_MARGIN && b.x + b.r > p.x && b.x - b.r < p.x + p.w
-  if (hit) {
-    // برخورد محکم و دقیق‌تر
-    const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
-    const currentSpeed = Math.sqrt(b.vx ** 2 + b.vy ** 2);
-    const newVy = -Math.sign(b.vy) * Math.abs(b.vy);
-    const newVx = offset * currentSpeed;
+    const p = state.paddles[i];
+    const PADDLE_MARGIN = 10;
+    const hit = b.y + b.r > p.y - PADDLE_MARGIN && b.y - b.r < p.y + p.h + PADDLE_MARGIN &&
+                b.x + b.r > p.x && b.x - b.r < p.x + p.w;
+    if (hit) {
+      const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
+      const currentSpeed = Math.sqrt(b.vx ** 2 + b.vy ** 2);
+      const newVy = -Math.sign(b.vy) * Math.abs(b.vy);
+      const newVx = offset * currentSpeed;
 
-    b.vx = newVx;
-    b.vy = newVy;
+      b.vx = newVx;
+      b.vy = newVy;
 
-    // افزایش تدریجی سرعت بعد از هر برخورد
-    const boostedSpeed = Math.min(currentSpeed * 1.05, MAX_SPEED);
-    const factor = boostedSpeed / currentSpeed;
-    b.vx *= factor;
-    b.vy *= factor;
+      const boostedSpeed = Math.min(currentSpeed * 1.05, MAX_SPEED);
+      const factor = boostedSpeed / currentSpeed;
+      b.vx *= factor;
+      b.vy *= factor;
 
-    // تنظیم مجدد موقعیت برای جلوگیری از گیر کردن
-    if (i === 0) b.y = p.y + p.h + b.r + 0.1;
-    else b.y = p.y - b.r - 0.1;
+      if (i === 0) b.y = p.y + p.h + b.r + 0.1;
+      else b.y = p.y - b.r - 0.1;
+    }
   }
-}
 
-
-
-  // score check with safety margin
-  const SAFE_MARGIN = 10; // جلوگیری از reset زودرس
+  // score check
+  const SAFE_MARGIN = 10;
   if (b.y < -SAFE_MARGIN) { 
     state.scores[1]++; 
-    resetBall(0); // بعد از امتیاز توپ به سمت بازیکن بالا حرکت کند
+    resetBall(state, 0);
   }
   if (b.y > GAME_H + SAFE_MARGIN) { 
     state.scores[0]++; 
-    resetBall(1); // بعد از امتیاز توپ به سمت بازیکن پایین حرکت کند
+    resetBall(state, 1);
   }
 
-  // send state
-  if (++tickCount % SEND_EVERY === 0) {
-    broadcast({
-      type: 'state',
-      state: {
-        ball: { x: +state.ball.x.toFixed(2), y: +state.ball.y.toFixed(2), r: state.ball.r },
-        paddles: state.paddles.map(p => ({
-          x: +p.x.toFixed(2), y: p.y, w: p.w, h: p.h
-        })),
-        scores: state.scores
-      }
-    });
-  }
+  broadcastGameState(game);
 }
 
-setInterval(tick, 1000 / TICK_HZ);
-
-// heartbeat
+// --- heartbeat ---
 setInterval(()=> {
   players.forEach((p, idx) => {
     if (!p) return;
@@ -137,7 +140,15 @@ setInterval(()=> {
         p.terminate();
         players[idx] = null;
         if (waitingPlayerId === idx) waitingPlayerId = null;
-        gameStarted = false;
+        // clear gameloop if this player was in a game
+        for (const gid in games) {
+          const g = games[gid];
+          if (g.players.includes(p)) {
+            clearInterval(g.loop);
+            g.players.forEach(ws => { if (ws !== p) send(ws, { type: 'declined' }); });
+            delete games[gid];
+          }
+        }
         return;
       }
       p.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
@@ -145,7 +156,7 @@ setInterval(()=> {
   });
 }, HEARTBEAT_MS);
 
-// handle connection
+// --- handle connections ---
 wss.on('connection', ws => {
   const slot = players.findIndex(p => p === null);
   if (slot === -1) { ws.send(JSON.stringify({ type: 'full' })); ws.close(); return; }
@@ -154,10 +165,8 @@ wss.on('connection', ws => {
   ws._meta = { missedPongs: 0, lastPaddleTs: 0 };
   players[slot] = ws;
 
-  // assign
   send(ws, { type: 'assign', playerId: slot });
 
-  // lobby
   if (waitingPlayerId === null) send(ws, { type: 'lobby', status: 'no_waiting' });
   else if (waitingPlayerId === slot) send(ws, { type: 'lobby', status: 'waiting_for_opponent' });
   else send(ws, { type: 'lobby', status: 'someone_waiting' });
@@ -177,7 +186,7 @@ wss.on('connection', ws => {
           waitingPlayerId = ws.playerId;
           send(ws, { type: 'lobby', status: 'waiting_for_opponent' });
           players.forEach((p, idx) => {
-            if (p && idx !== waitingPlayerId) send(p, { type: 'lobby', status: 'someone_waiting' });
+            if (p && idx !== waitingPlayerId) send(p, { type: 'someone_waiting' });
           });
         } else {
           send(ws, { type: 'lobby', status: 'someone_waiting' });
@@ -196,19 +205,12 @@ wss.on('connection', ws => {
           const a = waitingPlayerId;
           const b = ws.playerId;
           if (players[a] && players[b]) {
-            gameStarted = true;
             waitingPlayerId = null;
-            resetBall();
+            const gameId = createGame(players[a], players[b]);
+            const game = games[gameId];
+            game.loop = setInterval(() => gameLoop(game), 1000 / TICK_HZ);
             broadcast({ type: 'start' });
-            // send initial state immediately
-            broadcast({
-              type: 'state',
-              state: {
-                ball: { ...state.ball },
-                paddles: state.paddles,
-                scores: state.scores
-              }
-            });
+            broadcastGameState(game);
           }
         }
         break;
@@ -221,8 +223,14 @@ wss.on('connection', ws => {
         const x = Number(data.x);
         if (!Number.isFinite(x)) return;
         const pid = ws.playerId;
-        if (pid < 0 || pid > 1) return;
-        state.paddles[pid].x = Math.max(0, Math.min(GAME_W - state.paddles[pid].w, x));
+        // find game this player is in
+        for (const gid in games) {
+          const game = games[gid];
+          const idx = game.players.indexOf(ws);
+          if (idx !== -1) {
+            game.state.paddles[idx].x = Math.max(0, Math.min(GAME_W - game.state.paddles[idx].w, x));
+          }
+        }
         break;
     }
   });
@@ -232,28 +240,20 @@ wss.on('connection', ws => {
     if (typeof id === 'number') {
       players[id] = null;
       if (waitingPlayerId === id) waitingPlayerId = null;
-      gameStarted = false;
+
+      // remove player from any game
+      for (const gid in games) {
+        const g = games[gid];
+        if (g.players.includes(ws)) {
+          clearInterval(g.loop);
+          g.players.forEach(p => { if (p !== ws) send(p, { type: 'declined' }); });
+          delete games[gid];
+        }
+      }
+
       players.forEach(p => { if (p) send(p, { type: 'lobby', status: 'no_waiting' }); });
     }
   });
 
   ws.on('error', () => {});
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
