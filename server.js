@@ -8,7 +8,7 @@ const wss = new WebSocket.Server({ port: PORT });
 const GAME_W = 450;
 const GAME_H = 800;
 const TICK_HZ =   50;
-const SEND_RATE = 16;
+const SEND_RATE = 10;
 const SEND_EVERY = Math.max(1, Math.round(TICK_HZ / SEND_RATE));
 const MAX_SPEED = 10pp;
 const BASE_BALL_SPEED = 8;
@@ -59,55 +59,6 @@ function broadcast(obj) {
   players.forEach(p => { if (p && p.readyState === WebSocket.OPEN) p.send(payload); });
 }
 
-// physics tick
-  // let tickCount = 0;
-  // function tick() {
-  //   if (!gameStarted) return;
-  //   const b = state.ball;
-   //  b.x += b.vx;
-  //   b.y += b.vy;
-
-  // wall collisions
-   //  if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx); }
-   //  if (b.x + b.r > GAME_W) { b.x = GAME_W - b.r; b.vx = -Math.abs(b.vx); }
-
-  // paddle collisions
-  //   for (let i = 0; i < 2; i++) {
-    //   const p = state.paddles[i];
-    //   if (b.y + b.r > p.y && b.y - b.r < p.y + p.h &&
-      //     b.x + b.r > p.x && b.x - b.r < p.x + p.w) {
-
-      //   const offset = (b.x - (p.x + p.w / 2)) / (p.w / 2);
-      //   const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-     //    b.vy = -b.vy;
-       // b.vx = offset * Math.max(1.5, speed);
-
-    //     const cur = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-      //   if (cur > MAX_SPEED) { const f = MAX_SPEED / cur; b.vx *= f; b.vy *= f; }
- 
-     //    if (i === 0) b.y = p.y + p.h + b.r + 0.1;
-    //     else b.y = p.y - b.r - 0.1;
-   //    }
-   //  }
-
-  // score
-   //  if (b.y < 0) { state.scores[1]++; resetBall(); }
-   //  if (b.y > GAME_H) { state.scores[0]++; resetBall(); }
-
-  // send state
-  //   if (++tickCount % SEND_EVERY === 0) {
-  //     broadcast({
-   //      type: 'state',
-   //      state: {
-      //     ball: { x: +state.ball.x.toFixed(2), y: +state.ball.y.toFixed(2), r: state.ball.r },
-    //       paddles: state.paddles.map(p => ({
-   //          x: +p.x.toFixed(2), y: p.y, w: p.w, h: p.h
-  //         })),
-   //        scores: state.scores
-  //    }
- //   });
- // }
-//}
 // ball reset function
 function resetBall(towardsPlayer = 1) { // 0 = بالا، 1 = پایین
   state.ball.x = GAME_W / 2;
@@ -289,5 +240,6 @@ wss.on('connection', ws => {
 
   ws.on('error', () => {});
 });
+
 
 
